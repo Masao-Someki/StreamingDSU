@@ -34,13 +34,13 @@ class SampleDistilHubertModel(nn.Module):
         # Your implementation here
         feats, feats_lens = self.upstream(speech, speech_lengths)
         feats, feats_lens = self.featurizer(feats[-1:], feats_lens[-1:])
-        logits = self.linear(feats).transpose(1, 2)
-        logits = torch.log_softmax(logits, dim=1)
-        label = torch.randint(0, self.output, (logits.shape[0], logits.shape[2])).to(
-            logits.device
+        out = self.linear(feats).transpose(1, 2)
+        out = torch.log_softmax(out, dim=1)
+        label = torch.randint(0, self.output, (out.shape[0], out.shape[2])).to(
+            out.device
         )
 
-        loss = self.loss(logits, label)
+        loss = self.loss(out, label)
         return loss, {
             "loss": loss,
         }
@@ -52,6 +52,5 @@ class SampleDistilHubertModel(nn.Module):
     ):
         feats, feats_lens = self.upstream(speech, speech_lengths)
         feats, feats_lens = self.featurizer(feats[-1:], feats_lens[-1:])
-        logits = self.linear(feats).transpose(1, 2)
-        # logits = torch.log_softmax(logits, dim=1)
-        return logits
+        out = self.linear(feats).transpose(1, 2)
+        return out

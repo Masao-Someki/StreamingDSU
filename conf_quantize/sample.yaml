@@ -1,0 +1,2 @@
+dtype: float16
+quantize_type: dynamic

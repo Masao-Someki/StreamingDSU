@@ -77,6 +77,7 @@ class Trainer:
         ngpu: int = 1,
         train: bool = True,
         debug: bool = False,
+        sample_rate: int = 16000,
     ) -> None:
         """Initializes the Trainer with task configurations, datasets, and training settings.
 
@@ -96,6 +97,7 @@ class Trainer:
         """
         self.model_config = model_config
         self.task = task
+        self.sample_rate = sample_rate
 
         # Experiments name
         if resume is not None and not os.path.exists(f"{EXP_DIR}/{resume}"):
@@ -218,6 +220,8 @@ class Trainer:
         total_latency = 0
         n_samples = 0
         gmac_value = None
+        first_ten_latency = []
+        rtfs = []
 
         for i, batch in enumerate(dataloader):
             speech = batch[1]["speech"]
@@ -254,9 +258,16 @@ class Trainer:
             with torch.no_grad():
                 model.evaluate(**batch[1])
             latency = time.time() - start_time
+
+            if i < 10: 
+                first_ten_latency.append(latency)
+
             if i > 0: 
                 total_latency += latency
                 n_samples += 1
+            
+            if i > 1: # avoid the first iteration
+                rtfs.append(latency / (speech_lengths.item() / self.sample_rate))
 
         avg_latency = total_latency / n_samples if n_samples > 0 else 0
         print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
@@ -271,6 +282,8 @@ class Trainer:
             "average_latency_sec": avg_latency,
             "hardware_info": hardware_info,
             "energy_usage_info": energy_usage_info,
+            "first_ten_latency_sec": first_ten_latency,
+            "rtf": np.mean(rtfs),
         }
 
         Path(self.exp_dir).mkdir(parents=True, exist_ok=True)

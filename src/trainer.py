@@ -1,7 +1,9 @@
 import datetime
+import time
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import json
 
 import datasets
 import espnetez as ez
@@ -12,8 +14,39 @@ from espnet2.train.collate_fn import CommonCollateFn
 
 from src.model import StreamingDSUModel, get_build_model_fn
 
+from ptflops import get_model_complexity_info
+
 EXP_DIR = "./exp"
 STATS_DIR = f"./{EXP_DIR}/stats"
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def log_hardware_info():
+    hardware_info = {}
+    if torch.cuda.is_available():
+        device_name = torch.cuda.get_device_name(0)
+        total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        hardware_info["device_name"] = device_name
+        hardware_info["total_memory_gb"] = total_memory
+        print(f"GPU: {device_name}, Memory: {total_memory:.2f} GB")
+    else:
+        cpu_cores = os.cpu_count()
+        hardware_info["device_name"] = "CPU"
+        hardware_info["cpu_cores"] = cpu_cores
+        print(f"CPU: {cpu_cores} cores")
+    
+    return hardware_info
+
+def log_energy_usage():
+    energy_info = {}
+    if torch.cuda.is_available():
+        memory_allocated = torch.cuda.memory_allocated() / (1024 ** 2)  # Convert to MB
+        energy_info["memory_allocated_mb"] = memory_allocated
+        print(f"Energy consumed: {memory_allocated:.2f} MB")
+    else:
+        print("Energy usage is not applicable on CPU.")
+    return energy_info
 
 
 class Trainer:
@@ -177,10 +210,76 @@ class Trainer:
             pin_memory=True,
             collate_fn=CommonCollateFn(float_pad_value=0.0, int_pad_value=-1),
         )
-        for batch in dataloader:
-            model.evaluate(**batch[1])
+
+        hardware_info = log_hardware_info()
+        total_params = count_parameters(model)
+        print(f"Total parameters: {total_params}")
+
+        total_latency = 0
+        n_samples = 0
+        gmac_value = None
+
+        for i, batch in enumerate(dataloader):
+            speech = batch[1]["speech"]
+            speech_lengths = batch[1]["speech_lengths"]
+            text = batch[1]["text"]
+            text_lengths = batch[1]["text_lengths"]
+
+            if gmac_value is None: 
+                try:
+                    input_shape = (speech.shape[1],)  
+                    def input_constructor(input_res):
+                        return {
+                            "speech": torch.randn(1, *input_res).to(speech.device),  
+                            "speech_lengths": torch.tensor([speech_lengths.item()]).to(speech.device), 
+                            "text": torch.randint(0, 100, (1, text.shape[1])).to(speech.device), 
+                            "text_lengths": torch.tensor([text_lengths.item()]).to(speech.device),  
+                        }
+                    macs, params = get_model_complexity_info(
+                        model,
+                        input_shape,
+                        input_constructor=input_constructor,
+                        as_strings=True,
+                        print_per_layer_stat=False,
+                        verbose=False,
+                    )
+                    flops_in_gmac = macs.split()[0] 
+                    gmac_value = float(flops_in_gmac)
+                    print(f"FLOPs: {gmac_value} GMac (for one inference example)")
+                except Exception as e:
+                    print(f"Error calculating FLOPs and GMACs: {e}")
+                    gmac_value = str(e)
+
+            start_time = time.time()
+            with torch.no_grad():
+                model.evaluate(**batch[1])
+            latency = time.time() - start_time
+            if i > 0: 
+                total_latency += latency
+                n_samples += 1
+
+        avg_latency = total_latency / n_samples if n_samples > 0 else 0
+        print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
+        
+        energy_usage_info = log_energy_usage()
 
         model._log_stats()
+
+        metrics = {
+            "flops_gmac": gmac_value,
+            "parameters": total_params,
+            "average_latency_sec": avg_latency,
+            "hardware_info": hardware_info,
+            "energy_usage_info": energy_usage_info,
+        }
+
+        Path(self.exp_dir).mkdir(parents=True, exist_ok=True)
+        metrics_file_path = Path(self.exp_dir) / "efficiency_metrics.json"
+        with open(metrics_file_path, "w") as f:
+            json.dump(metrics, f, indent=4)
+
+        print(f"Efficiency metrics saved to {metrics_file_path}")
+
 
     def eval_quantize(self, checkpoint_path: str, config: str = None) -> None:
         """Evaluates the model with quantization applied.

@@ -2,3 +2,4 @@ onnxruntime
 onnx
 datasets
 tensorboard
+ptflops

@@ -262,7 +262,7 @@ class Trainer:
             Dict[str, Any]: Evaluation results.
         """
 
-        if checkpoint_path is not None:
+        if model is None:
             model = get_build_model_fn(self.model_config)()
 
         # evaluate
@@ -362,8 +362,6 @@ class Trainer:
 
             if i < 10:
                 first_ten_latency.append(latency)
-            else:
-                break
 
             if i > 0:
                 total_latency += latency

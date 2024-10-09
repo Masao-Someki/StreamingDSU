@@ -288,7 +288,6 @@ class Trainer:
         results = []
 
         tracker = EmissionsTracker(output_dir=self.exp_dir)
-        print(self.exp_dir)
         tracker.start()
         for i, batch in enumerate(dataloader):
             if gmac_value is None:  # computes the FLOPs for the first iteration.
@@ -371,10 +370,9 @@ class Trainer:
                 rtfs.append(latency / (speech_lengths.item() / self.sample_rate))
 
         tracker.stop()
-        time.sleep(1)  # avoid high CPU usage
         avg_latency = total_latency / n_samples if n_samples > 0 else 0
         print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
-        # avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
+        avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
 
         model._log_stats()
 
@@ -382,8 +380,8 @@ class Trainer:
             "flops_gmac": gmac_value,
             "parameters": total_params,
             "average_latency_sec": avg_latency,
-            # "average_emissions": avg_emissions,
-            # "average_energy_consumed": avg_energy_consumed,
+            "average_emissions": avg_emissions,
+            "average_energy_consumed": avg_energy_consumed,
             "hardware_info": hardware_info,
             "first_ten_latency_sec": first_ten_latency,
             "rtf": np.mean(rtfs),

@@ -81,22 +81,7 @@ class WavLMBaselnie(nn.Module):
         text_lengths: torch.Tensor,
         **kwargs,
     ):
-        feats, feats_lens = self.model(speech, speech_lengths)
-        units = self.quantizer(feats[0])
-
-        # De-duplicate units
-        deduplicated_units = [x[0] for x in groupby(units)]
-
-        # units to cjk characters and apply BPE
-        cjk_units = "".join([chr(int("4e00", 16) + c) for c in units])
-        cjk_tokens = "".join([chr(int("4e00", 16) + c) for c in deduplicated_units])
-        bpe_tokens = self.tokenizer.text2tokens(cjk_tokens)
-        bpe_tokens = self.converter.tokens2ids(bpe_tokens)
-        bpe_tokens = torch.Tensor(bpe_tokens).to(speech.device)
-
-        # Inference using the MT model
-        results = self.mt_model(bpe_tokens)
-
+        _ = self.inference(speech, speech_lengths)
         return None, {}
 
     def inference(

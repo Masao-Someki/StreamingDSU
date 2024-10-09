@@ -3,3 +3,4 @@ onnx
 datasets
 tensorboard
 ptflops
+codecarbon

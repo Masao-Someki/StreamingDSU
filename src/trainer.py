@@ -1,40 +1,48 @@
 import datetime
-import time
+import json
 import os
+import time
+from glob import glob
+from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import json
 
 import datasets
 import espnetez as ez
+import librosa
 import numpy as np
 import pandas as pd
+import soundfile as sf
 import torch
 import yaml
+from codecarbon import EmissionsTracker
 from espnet2.train.collate_fn import CommonCollateFn
+from ptflops import get_model_complexity_info
 
 from src.model import StreamingDSUModel, get_build_model_fn
 
-from ptflops import get_model_complexity_info
-from codecarbon import EmissionsTracker
+DELTA_DIR = "/scratch/bbjs/shared/corpora"
+BASE_DIR = "/home/masao/database"
 
-EXP_DIR = "./exp"
-STATS_DIR = f"./{EXP_DIR}/stats"
+STATS_DIR = f"exp/stats"
+
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+
 def compute_emissions_and_energy(csv_file_path, num_samples):
     df = pd.read_csv(csv_file_path)
-    emissions_sum = df['emissions'].sum()
-    energy_consumed_sum = df['energy_consumed'].sum()
+    emissions_sum = df["emissions"].sum()
+    energy_consumed_sum = df["energy_consumed"].sum()
     return emissions_sum / num_samples, energy_consumed_sum / num_samples
+
 
 def log_hardware_info():
     hardware_info = {}
     if torch.cuda.is_available():
         device_name = torch.cuda.get_device_name(0)
-        total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+        total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         hardware_info["device_name"] = device_name
         hardware_info["total_memory_gb"] = total_memory
         print(f"GPU: {device_name}, Memory: {total_memory:.2f} GB")
@@ -43,8 +51,68 @@ def log_hardware_info():
         hardware_info["device_name"] = "CPU"
         hardware_info["cpu_cores"] = cpu_cores
         print(f"CPU: {cpu_cores} cores")
-    
+
     return hardware_info
+
+
+def get_dataset(
+    task,
+    sample_rate: int = 16000,
+    debug: bool = False,
+    num_proc: int = 1,
+    train_split: str = None,
+    valid_split: str = None,
+):
+    if debug:
+        train_dataset = datasets.load_from_disk("debug_data/train")
+        valid_dataset = datasets.load_from_disk("debug_data/valid")
+        dataset = {"train": train_dataset, "valid": valid_dataset}
+        data_info = {
+            "speech": lambda x: x["path"]["array"],
+            "text": lambda x: np.random.randint(30, size=(1, 10)),
+        }
+        return dataset, data_info, "train", "valid"
+
+    if task == "asr":
+        # Then we will use the following two datasets:
+        # - juice500/DSUChallenge2024-wavlm_large-l21-km2000 for discrete units
+        # - juice500/DSUChallenge2024 for audio path, text, and ids.
+        dataset = None
+        if os.path.exists("asr_data"):
+            dataset = datasets.load_from_disk("asr_data")
+
+        # if dataset is None or "units" not in dataset[train_split].features.keys() or "units" not in dataset[valid_split].features.keys():
+        if dataset is None or "units" not in dataset[valid_split].features.keys():
+            dataset = datasets.load_dataset("juice500/DSUChallenge2024").sort("id")
+            units_set = datasets.load_dataset(
+                "juice500/DSUChallenge2024-wavlm_large-l21-km2000"
+            ).sort("id")
+
+            # for key in dataset.keys():
+            for key in [train_split, valid_split]:
+
+                def add_units_and_replace_path(example, aid):
+                    assert example["id"] == units_set[key]["id"][aid]
+                    example["units"] = units_set[key]["units"][aid]
+                    example["audio"] = example["audio"].replace(DELTA_DIR, BASE_DIR)
+                    return example
+
+                dataset[key] = dataset[key].map(
+                    add_units_and_replace_path, num_proc=num_proc, with_indices=True
+                )
+            dataset.save_to_disk("asr_data")
+
+        data_info = {
+            "speech": lambda x: librosa.load(x["audio"], sr=sample_rate)[0].astype(
+                np.float32
+            ),
+            "text": lambda x: np.array(x["units"]),
+        }
+        return dataset, data_info, "train", "test_clean"
+    elif task == "tts":
+        # implement TTS training here
+        return None, None
+
 
 class Trainer:
     """Trainer class for handling training, evaluation, and exporting models.
@@ -70,7 +138,9 @@ class Trainer:
         model_config: str,
         hf_dataset_or_id: Union[str, Dict[str, Any]] = None,
         train_args_paths: Union[str, List[str]] = None,
-        resume: str = None,
+        exp_dir: Union[Path, str] = "exp",
+        train_split: str = "train",
+        valid_split: str = "valid",
         ngpu: int = 1,
         train: bool = True,
         debug: bool = False,
@@ -95,59 +165,48 @@ class Trainer:
         self.model_config = model_config
         self.task = task
         self.sample_rate = sample_rate
+        self.exp_dir = exp_dir
 
-        # Experiments name
-        if resume is not None and not os.path.exists(f"{EXP_DIR}/{resume}"):
-            raise RuntimeError(f"Resume path does not exist: {EXP_DIR}/{resume}")
-        elif resume is not None:
-            EXPERIMENT_NAME = resume
+        # load configs
+        assert train_args_paths is not None, "train_args_paths must be provided"
+        if isinstance(train_args_paths, str):
+            train_args = ez.from_yaml(task, train_args_paths)
         else:
-            EXPERIMENT_NAME = f"{task}_{hf_dataset_or_id}"
-
-        self.exp_dir = Path(EXP_DIR) / EXPERIMENT_NAME
+            train_args = {}
+            for paths in train_args_paths:
+                train_args = ez.update_finetune_config(task, train_args, paths)
 
         # initialize training-related attributes
-        if debug:
-            train_dataset = datasets.load_from_disk("debug_data/train")
-            valid_dataset = datasets.load_from_disk("debug_data/valid")
-            self.dataset = {"train": train_dataset, "valid": valid_dataset}
-        elif isinstance(hf_dataset_or_id, str):
-            self.dataset = datasets.load_dataset(hf_dataset_or_id)
-        else:
-            self.dataset = hf_dataset_or_id
-
-        self.data_info = {
-            "speech": lambda x: x["path"]["array"],
-            "text": lambda x: np.random.randint(30, size=(1, 10)),
-        }
-
-        self.train_dataset = ez.dataset.ESPnetEZDataset(
-            self.dataset["train"], data_info=self.data_info
+        dataset, data_info, train_key, dev_key = get_dataset(
+            task,
+            sample_rate,
+            debug,
+            train_args["num_workers"],
+            train_split,
+            valid_split,
         )
+        self.dataset = dataset
+        self.data_info = data_info
         self.valid_dataset = ez.dataset.ESPnetEZDataset(
-            self.dataset["valid"], data_info=self.data_info
+            self.dataset[dev_key], data_info=self.data_info
         )
 
         if train:
-            # load configs
-            assert train_args_paths is not None, "train_args_paths must be provided"
-            if isinstance(train_args_paths, str):
-                train_args = ez.from_yaml(task, train_args_paths)
-            else:
-                train_args = {}
-                for paths in train_args_paths:
-                    train_args = ez.update_finetune_config(task, train_args, paths)
             train_args["token_list"] = ["<unk>", "<s>", "</s>", "<pad>"]
             train_args["token_type"] = "char"
+
+            train_dataset = ez.dataset.ESPnetEZDataset(
+                self.dataset[train_key], data_info=self.data_info
+            )
 
             self.trainer = ez.Trainer(
                 task=task,
                 train_config=train_args,
-                train_dataset=self.train_dataset,
+                train_dataset=train_dataset,
                 valid_dataset=self.valid_dataset,
                 build_model_fn=get_build_model_fn(model_config),
                 data_info=self.data_info,
-                output_dir=f"{EXP_DIR}/{EXPERIMENT_NAME}",
+                output_dir=exp_dir,
                 stats_dir=STATS_DIR,
                 ngpu=ngpu,
             )
@@ -179,13 +238,20 @@ class Trainer:
         d = torch.load(checkpoint_path)
         new_dict = {}
         for keys in d.keys():
-            new_key = keys[6:]  # remove "module." prefix
-            new_dict[new_key] = d[keys]
+            if keys.startswith("module."):  # remove "module." prefix
+                new_key = keys[6:]  # remove "module." prefix
+                new_dict[new_key] = d[keys]
+
         model = get_build_model_fn(self.model_config)()
-        model.load_state_dict(new_dict)
+        if len(new_dict.keys()) == len(d.keys()):
+            model.load_state_dict(new_dict)
+        else:
+            model.load_state_dict(d)
         return model
 
-    def evaluate(self, checkpoint_path: str, model=None) -> Dict[str, Any]:
+    def evaluate(
+        self, checkpoint_path: str = None, model=None, num_workers=1
+    ) -> Dict[str, Any]:
         """Evaluates the model on the validation dataset.
 
         Args:
@@ -195,9 +261,9 @@ class Trainer:
         Returns:
             Dict[str, Any]: Evaluation results.
         """
-        assert "valid" in self.dataset, "Cannot evaluate on validation data"
-        if model is None:
-            model = self._load_ckpt(checkpoint_path)
+
+        if checkpoint_path is not None:
+            model = get_build_model_fn(self.model_config)()
 
         # evaluate
         print(f"Evaluating on test data using checkpoint: {checkpoint_path}")
@@ -205,7 +271,7 @@ class Trainer:
             self.valid_dataset,
             batch_size=1,
             shuffle=False,
-            num_workers=self.trainer.train_config.num_workers,
+            num_workers=num_workers,
             pin_memory=True,
             collate_fn=CommonCollateFn(float_pad_value=0.0, int_pad_value=-1),
         )
@@ -219,25 +285,34 @@ class Trainer:
         gmac_value = None
         first_ten_latency = []
         rtfs = []
+        results = []
 
         tracker = EmissionsTracker(output_dir=self.exp_dir)
-
+        print(self.exp_dir)
+        tracker.start()
         for i, batch in enumerate(dataloader):
-            speech = batch[1]["speech"]
-            speech_lengths = batch[1]["speech_lengths"]
-            text = batch[1]["text"]
-            text_lengths = batch[1]["text_lengths"]
-
-            if gmac_value is None: 
+            if gmac_value is None:  # computes the FLOPs for the first iteration.
                 try:
-                    input_shape = (speech.shape[1],)  
+                    speech = batch[1]["speech"]
+                    speech_lengths = batch[1]["speech_lengths"]
+                    text = batch[1]["text"]
+                    text_lengths = batch[1]["text_lengths"]
+                    input_shape = (speech.shape[1],)
+
                     def input_constructor(input_res):
                         return {
-                            "speech": torch.randn(1, *input_res).to(speech.device),  
-                            "speech_lengths": torch.tensor([speech_lengths.item()]).to(speech.device), 
-                            "text": torch.randint(0, 100, (1, text.shape[1])).to(speech.device), 
-                            "text_lengths": torch.tensor([text_lengths.item()]).to(speech.device),  
+                            "speech": torch.randn(1, *input_res).to(speech.device),
+                            "speech_lengths": torch.tensor([speech_lengths.item()]).to(
+                                speech.device
+                            ),
+                            "text": torch.randint(0, 100, (1, text.shape[1])).to(
+                                speech.device
+                            ),
+                            "text_lengths": torch.tensor([text_lengths.item()]).to(
+                                speech.device
+                            ),
                         }
+
                     macs, params = get_model_complexity_info(
                         model,
                         input_shape,
@@ -246,33 +321,62 @@ class Trainer:
                         print_per_layer_stat=False,
                         verbose=False,
                     )
-                    flops_in_gmac = macs.split()[0] 
+                    flops_in_gmac = macs.split()[0]
                     gmac_value = float(flops_in_gmac)
                     print(f"FLOPs: {gmac_value} GMac (for one inference example)")
                 except Exception as e:
                     print(f"Error calculating FLOPs and GMACs: {e}")
                     gmac_value = str(e)
 
-            tracker.start()
             start_time = time.time()
             with torch.no_grad():
-                model.evaluate(**batch[1])
+                out = model.inference(**batch[1])
             latency = time.time() - start_time
 
-            if i < 10: 
-                first_ten_latency.append(latency)
+            if self.task == "asr":
+                results.append(
+                    {
+                        "hyp": out["text"],
+                        "hyp_units": out["units"],
+                        "hyp_units_dedup": out["deduplicated_units"],
+                        "ref_units": "".join(
+                            [chr(int("4e00", 16) + c) for c in batch[1]["text"][0]]
+                        ),
+                    }
+                )
 
-            if i > 0: 
+            if self.task == "tts":
+                # if not os.path.exists(f"{self.exp_dir}/hyp_wavs"):
+                #     os.mkdir(f"{self.exp_dir}/hyp_wavs")
+                # if not os.path.exists(f"{self.exp_dir}/ref_wavs"):
+                #     os.mkdir(f"{self.exp_dir}/ref_wavs")
+
+                # sf.write(f"{self.exp_dir}/hyp_wavs/{i}.wav", out["wav"].numpy(), self.sample_rate)
+                # sf.write(f"{self.exp_dir}/ref_wavs/{i}.wav", batch[1]["speech"][0].numpy(), self.sample_rate)
+
+                # results.append({
+                #     "hyp": f"{self.exp_dir}/hyp_wavs/{i}.wav",
+                #     "ref": f"{self.exp_dir}/ref_wavs/{i}.wav",
+                # })
+                pass
+
+            if i < 10:
+                first_ten_latency.append(latency)
+            else:
+                break
+
+            if i > 0:
                 total_latency += latency
                 n_samples += 1
-            
-            if i > 1: # avoid the first iteration
+
+            if i > 1:  # avoid the first iteration
                 rtfs.append(latency / (speech_lengths.item() / self.sample_rate))
 
-            tracker.stop()
+        tracker.stop()
+        time.sleep(1)  # avoid high CPU usage
         avg_latency = total_latency / n_samples if n_samples > 0 else 0
         print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
-        avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
+        # avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
 
         model._log_stats()
 
@@ -280,8 +384,8 @@ class Trainer:
             "flops_gmac": gmac_value,
             "parameters": total_params,
             "average_latency_sec": avg_latency,
-            "average_emissions": avg_emissions,
-            "average_energy_consumed": avg_energy_consumed,
+            # "average_emissions": avg_emissions,
+            # "average_energy_consumed": avg_energy_consumed,
             "hardware_info": hardware_info,
             "first_ten_latency_sec": first_ten_latency,
             "rtf": np.mean(rtfs),
@@ -294,6 +398,10 @@ class Trainer:
 
         print(f"Efficiency metrics saved to {metrics_file_path}")
 
+        with open(Path(self.exp_dir) / "results.json", "w") as f:
+            json.dump(results, f, indent=4)
+
+        print(f"Results saved to {metrics_file_path}")
 
     def eval_quantize(self, checkpoint_path: str, config: str = None) -> None:
         """Evaluates the model with quantization applied.

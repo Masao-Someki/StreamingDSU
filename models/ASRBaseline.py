@@ -1,13 +1,13 @@
-import joblib
+from itertools import groupby
 
+import joblib
+import sentencepiece as spm
 import torch
 import torch.nn as nn
 from espnet2.asr.frontend.s3prl import S3prlFrontend
 from espnet2.bin.mt_inference import Text2Text
-import soundfile as sf
-import matplotlib.pyplot as plt
-import sentencepiece as spm
-from itertools import groupby
+from espnet2.text.build_tokenizer import build_tokenizer
+from espnet2.text.token_id_converter import TokenIDConverter
 
 
 class ApplyKmeans(object):
@@ -45,6 +45,7 @@ class WavLMBaselnie(nn.Module):
         config_path: str,
         kmeans_path: str,
         bpemodel_path: str,
+        token_list: str,
         use_gpu_kmeans: bool = True,
         **kwargs,
     ):
@@ -52,19 +53,25 @@ class WavLMBaselnie(nn.Module):
         self.model = S3prlFrontend(
             fs=16000,
             frontend_conf={
-                'upstream': 'wavlm_large',
+                "upstream": "wavlm_large",
             },
-            download_dir='./hub',
+            download_dir="./hub",
             multilayer_feature=False,
-            layer=21,
+            layer=19,
         )
         self.mt_model = Text2Text(
             mt_train_config=config_path,
             mt_model_file=checkpoint_path,
-            beam_size=5
+            beam_size=20,
+            ctc_weight=0.3,
+            lm_weight=0.0,
         )
         self.quantizer = ApplyKmeans(kmeans_path, use_gpu=use_gpu_kmeans)
-        self.bpemodel = spm.SentencePieceProcessor(model_file=bpemodel_path)
+        self.tokenizer = build_tokenizer(
+            token_type="bpe",
+            bpemodel=bpemodel_path,
+        )
+        self.converter = TokenIDConverter(token_list=token_list)
 
     def forward(
         self,
@@ -74,8 +81,23 @@ class WavLMBaselnie(nn.Module):
         text_lengths: torch.Tensor,
         **kwargs,
     ):
-        pass
-        return None, None
+        feats, feats_lens = self.model(speech, speech_lengths)
+        units = self.quantizer(feats[0])
+
+        # De-duplicate units
+        deduplicated_units = [x[0] for x in groupby(units)]
+
+        # units to cjk characters and apply BPE
+        cjk_units = "".join([chr(int("4e00", 16) + c) for c in units])
+        cjk_tokens = "".join([chr(int("4e00", 16) + c) for c in deduplicated_units])
+        bpe_tokens = self.tokenizer.text2tokens(cjk_tokens)
+        bpe_tokens = self.converter.tokens2ids(bpe_tokens)
+        bpe_tokens = torch.Tensor(bpe_tokens).to(speech.device)
+
+        # Inference using the MT model
+        results = self.mt_model(bpe_tokens)
+
+        return None, {}
 
     def inference(
         self,
@@ -84,23 +106,23 @@ class WavLMBaselnie(nn.Module):
         **kwargs,
     ):
         feats, feats_lens = self.model(speech, speech_lengths)
-        clusters = self.quantizer(feats[0])
+        units = self.quantizer(feats[0])
 
-        # De-duplicate clusters
-        unique_clusters = [x[0] for x in groupby(clusters)]
-        print(unique_clusters)
+        # De-duplicate units
+        deduplicated_units = [x[0] for x in groupby(units)]
 
-        # clusters to cjk characters and apply BPE
-        cjk_tokens = ''.join([
-            chr(int('4e00', 16) + c)
-            for c in unique_clusters
-        ])
-        print(cjk_tokens)
-        bpe_tokens = self.bpemodel.encode(cjk_tokens)
+        # units to cjk characters and apply BPE
+        cjk_units = "".join([chr(int("4e00", 16) + c) for c in units])
+        cjk_tokens = "".join([chr(int("4e00", 16) + c) for c in deduplicated_units])
+        bpe_tokens = self.tokenizer.text2tokens(cjk_tokens)
+        bpe_tokens = self.converter.tokens2ids(bpe_tokens)
         bpe_tokens = torch.Tensor(bpe_tokens).to(speech.device)
-        print(bpe_tokens)
+
+        # Inference using the MT model
         results = self.mt_model(bpe_tokens)
-        print(results)
-        import sys; sys.exit()
-        
-        return
+
+        return {
+            "text": results[0][0],
+            "units": cjk_units,
+            "deduplicated_units": cjk_tokens,
+        }

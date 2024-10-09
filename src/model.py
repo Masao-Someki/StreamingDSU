@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 import espnetez as ez
 import numpy as np
+import soundfile as sf
 import torch
 import yaml
 from espnet2.train.abs_espnet_model import AbsESPnetModel
@@ -46,6 +47,7 @@ class StreamingDSUModel(AbsESPnetModel):
         )
         self.log_stats = {}
         self.mode = "train"
+        self.internal_counter = 0
 
     def inference_mode(self) -> None:
         """Sets the model to inference mode."""
@@ -74,6 +76,7 @@ class StreamingDSUModel(AbsESPnetModel):
     def _log_stats(self) -> None:
         """Logs the accumulated statistics."""
         text = ""
+        self.internal_counter = 0
         for key in self.log_stats:
             if isinstance(self.log_stats[key][0], torch.Tensor):
                 self.log_stats[key] = [
@@ -83,8 +86,8 @@ class StreamingDSUModel(AbsESPnetModel):
             avg = np.mean(self.log_stats[key])
             std = np.std(self.log_stats[key])
             text += f"{key}: {avg:.3f} ({std:.3f})  "
+            self.log_stats[key] = []
         print(text)
-        self.log_stats[key] = []
 
     def _aggregate_log_stats(self, stats: Dict[str, float]) -> None:
         """Aggregates the statistics for logging.
@@ -92,6 +95,7 @@ class StreamingDSUModel(AbsESPnetModel):
         Args:
             stats (Dict[str, float]): Dictionary containing current batch statistics.
         """
+        self.internal_counter += 1
         for key, value in stats.items():
             if key not in self.log_stats:
                 self.log_stats[key] = []
@@ -108,28 +112,27 @@ class StreamingDSUModel(AbsESPnetModel):
             **kwargs: Additional keyword arguments.
 
         Returns:
-            Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, float], None]]: 
+            Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, float], None]]:
             - If in training mode: returns loss, statistics, and None.
             - If in inference mode: returns the inference results from the model.
         """
         if self.mode == "train":
             loss, stats = self.model(*args, **kwargs)
             self._aggregate_log_stats(stats)
-            if len(self.log_stats["loss"]) % self.log_interval == 0:
+            if self.internal_counter % self.log_interval == 0:
                 self._log_stats()
             return loss, stats, None
         elif self.mode == "inference":
             return self.model.inference(*args, **kwargs)
 
-    def evaluate(self, *args, **kwargs) -> None:
+    def inference(self, *args, **kwargs) -> None:
         """Evaluates the model on the provided inputs.
 
         Args:
             *args: Additional positional arguments.
             **kwargs: Additional keyword arguments.
         """
-        loss, stats = self.model(*args, **kwargs)
-        self._aggregate_log_stats(stats)
+        return self.model.inference(*args, **kwargs)
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         """Loads the state dictionary into the model.

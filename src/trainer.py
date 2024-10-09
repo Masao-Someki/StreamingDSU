@@ -8,6 +8,7 @@ import json
 import datasets
 import espnetez as ez
 import numpy as np
+import pandas as pd
 import torch
 import yaml
 from espnet2.train.collate_fn import CommonCollateFn
@@ -15,12 +16,19 @@ from espnet2.train.collate_fn import CommonCollateFn
 from src.model import StreamingDSUModel, get_build_model_fn
 
 from ptflops import get_model_complexity_info
+from codecarbon import EmissionsTracker
 
 EXP_DIR = "./exp"
 STATS_DIR = f"./{EXP_DIR}/stats"
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def compute_emissions_and_energy(csv_file_path, num_samples):
+    df = pd.read_csv(csv_file_path)
+    emissions_sum = df['emissions'].sum()
+    energy_consumed_sum = df['energy_consumed'].sum()
+    return emissions_sum / num_samples, energy_consumed_sum / num_samples
 
 def log_hardware_info():
     hardware_info = {}
@@ -37,17 +45,6 @@ def log_hardware_info():
         print(f"CPU: {cpu_cores} cores")
     
     return hardware_info
-
-def log_energy_usage():
-    energy_info = {}
-    if torch.cuda.is_available():
-        memory_allocated = torch.cuda.memory_allocated() / (1024 ** 2)  # Convert to MB
-        energy_info["memory_allocated_mb"] = memory_allocated
-        print(f"Energy consumed: {memory_allocated:.2f} MB")
-    else:
-        print("Energy usage is not applicable on CPU.")
-    return energy_info
-
 
 class Trainer:
     """Trainer class for handling training, evaluation, and exporting models.
@@ -223,6 +220,8 @@ class Trainer:
         first_ten_latency = []
         rtfs = []
 
+        tracker = EmissionsTracker(output_dir=self.exp_dir)
+
         for i, batch in enumerate(dataloader):
             speech = batch[1]["speech"]
             speech_lengths = batch[1]["speech_lengths"]
@@ -254,6 +253,7 @@ class Trainer:
                     print(f"Error calculating FLOPs and GMACs: {e}")
                     gmac_value = str(e)
 
+            tracker.start()
             start_time = time.time()
             with torch.no_grad():
                 model.evaluate(**batch[1])
@@ -269,10 +269,10 @@ class Trainer:
             if i > 1: # avoid the first iteration
                 rtfs.append(latency / (speech_lengths.item() / self.sample_rate))
 
+            tracker.stop()
         avg_latency = total_latency / n_samples if n_samples > 0 else 0
         print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
-        
-        energy_usage_info = log_energy_usage()
+        avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
 
         model._log_stats()
 
@@ -280,8 +280,9 @@ class Trainer:
             "flops_gmac": gmac_value,
             "parameters": total_params,
             "average_latency_sec": avg_latency,
+            "average_emissions": avg_emissions,
+            "average_energy_consumed": avg_energy_consumed,
             "hardware_info": hardware_info,
-            "energy_usage_info": energy_usage_info,
             "first_ten_latency_sec": first_ten_latency,
             "rtf": np.mean(rtfs),
         }

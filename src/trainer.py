@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import soundfile as sf
 import torch
+import psutil
+import platform
 import yaml
 from codecarbon import EmissionsTracker
 from espnet2.train.collate_fn import CommonCollateFn
@@ -22,7 +24,7 @@ from ptflops import get_model_complexity_info
 from src.model import StreamingDSUModel, get_build_model_fn
 
 DELTA_DIR = "/scratch/bbjs/shared/corpora"
-BASE_DIR = "/home/masao/database"
+BASE_DIR = "/home/zhenwu/database"
 
 STATS_DIR = f"exp/stats"
 
@@ -40,17 +42,27 @@ def compute_emissions_and_energy(csv_file_path, num_samples):
 
 def log_hardware_info():
     hardware_info = {}
+    
     if torch.cuda.is_available():
         device_name = torch.cuda.get_device_name(0)
-        total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        total_memory = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
         hardware_info["device_name"] = device_name
-        hardware_info["total_memory_gb"] = total_memory
+        hardware_info["gpu_memory_gb"] = total_memory
         print(f"GPU: {device_name}, Memory: {total_memory:.2f} GB")
     else:
-        cpu_cores = os.cpu_count()
-        hardware_info["device_name"] = "CPU"
-        hardware_info["cpu_cores"] = cpu_cores
-        print(f"CPU: {cpu_cores} cores")
+        print("No GPU available.")
+
+    hardware_info["cpu_name"] = platform.processor()
+    hardware_info["cpu_cores_physical"] = psutil.cpu_count(logical=False)
+    hardware_info["cpu_cores_total"] = psutil.cpu_count(logical=True)
+    hardware_info["cpu_freq"] = psutil.cpu_freq().current
+    print(f"CPU: {hardware_info['cpu_name']}, Cores: {hardware_info['cpu_cores_physical']} physical, {hardware_info['cpu_cores_total']} total, "
+          f"Frequency: {hardware_info['cpu_freq']:.2f} MHz")
+
+    svmem = psutil.virtual_memory()
+    hardware_info["ram_total_gb"] = svmem.total / (1024 ** 3)
+    hardware_info["ram_available_gb"] = svmem.available / (1024 ** 3)
+    print(f"RAM: {hardware_info['ram_total_gb']:.2f} GB total, {hardware_info['ram_available_gb']:.2f} GB available")
 
     return hardware_info
 

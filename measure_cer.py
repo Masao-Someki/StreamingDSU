@@ -5,10 +5,11 @@ import editdistance
 from itertools import groupby
 import numpy as np
 
+import string
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the model.")
-    parser.add_argument("--test_split", required=True, help="test split.")
     parser.add_argument("--exp_dir", required=True, help="Path to the exp directory.")
     args = parser.parse_args()
 
@@ -22,8 +23,8 @@ if __name__ == "__main__":
     cer_unit = []
     cer_dedup = []
     for i in range(len(results)):
-        hyp = results[i]["hyp"]
-        ref = valid_ds[i]["text"]
+        hyp = results[i]["hyp"].lower().translate(str.maketrans('', '', string.punctuation))
+        ref = valid_ds[i]["text"].lower().translate(str.maketrans('', '', string.punctuation))
         cer = editdistance.eval(hyp, ref) / len(ref)
         cers.append(cer)
 
@@ -33,6 +34,13 @@ if __name__ == "__main__":
                 results[i]["ref_units"]
             ) / len(results[i]["ref_units"])
         )
+        acc = []
+        for j in range(len(results[i]["hyp_units"])):
+            if results[i]["hyp_units"][j] == results[i]["ref_units"][j]:
+                acc.append(1)
+            else:
+                acc.append(0)
+        
 
         cer_dedup.append(
             editdistance.eval(
@@ -43,4 +51,5 @@ if __name__ == "__main__":
 
     print(f"CER: {np.mean(cers):.2%}")
     print(f"CER (units): {np.mean(cer_unit):.2%}")
+    print(f"ACC (units): {np.mean(acc):.2%}")
     print(f"CER (deduplicated units): {np.mean(cer_dedup):.2%}")

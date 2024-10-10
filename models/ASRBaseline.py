@@ -4,6 +4,7 @@ import joblib
 import sentencepiece as spm
 import torch
 import torch.nn as nn
+import librosa
 from espnet2.asr.frontend.s3prl import S3prlFrontend
 from espnet2.bin.mt_inference import Text2Text
 from espnet2.text.build_tokenizer import build_tokenizer
@@ -47,9 +48,11 @@ class WavLMBaselnie(nn.Module):
         bpemodel_path: str,
         token_list: str,
         use_gpu_kmeans: bool = True,
+        speed_up: float = 1.0,
         **kwargs,
     ):
         super().__init__()
+        self.speed_up = speed_up
         self.model = S3prlFrontend(
             fs=16000,
             frontend_conf={
@@ -90,6 +93,10 @@ class WavLMBaselnie(nn.Module):
         speech_lengths: torch.Tensor,
         **kwargs,
     ):
+        if self.speed_up != 1.0:
+            speech = librosa.effects.time_stretch(speech[0].cpu().numpy(), rate=2.0)
+            speech = torch.from_numpy(speech).unsqueeze(0).to(speech_lengths.device)
+            speech_lengths = torch.tensor([speech.shape[1]]).to(speech_lengths.device)
         feats, feats_lens = self.model(speech, speech_lengths)
         units = self.quantizer(feats[0])
 

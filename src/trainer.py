@@ -6,6 +6,7 @@ from glob import glob
 from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from tqdm import tqdm
 
 import datasets
 import espnetez as ez
@@ -289,7 +290,7 @@ class Trainer:
 
         tracker = EmissionsTracker(output_dir=self.exp_dir)
         tracker.start()
-        for i, batch in enumerate(dataloader):
+        for i, batch in tqdm(enumerate(dataloader)):
             if gmac_value is None:  # computes the FLOPs for the first iteration.
                 try:
                     speech = batch[1]["speech"]

@@ -90,38 +90,45 @@ def get_dataset(
         # Then we will use the following two datasets:
         # - juice500/DSUChallenge2024-wavlm_large-l21-km2000 for discrete units
         # - juice500/DSUChallenge2024 for audio path, text, and ids.
-        dataset = None
-        if os.path.exists("asr_data"):
-            dataset = datasets.load_from_disk("asr_data")
+        # dataset = None
+        # if os.path.exists("asr_data"):
+        #     dataset = datasets.load_from_disk("asr_data")
+
+        dataset = {
+            'train': datasets.load_dataset("train_subset"),
+            'valid': datasets.load_dataset("dev_clean"),
+        }
 
         # if dataset is None or "units" not in dataset[train_split].features.keys() or "units" not in dataset[valid_split].features.keys():
-        if dataset is None or "units" not in dataset[valid_split].features.keys():
-            dataset = datasets.load_dataset("juice500/DSUChallenge2024").sort("id")
-            units_set = datasets.load_dataset(
-                "juice500/DSUChallenge2024-wavlm_large-l21-km2000"
-            ).sort("id")
+        # if dataset is None or "units" not in dataset[valid_split].features.keys():
+        #     dataset = datasets.load_dataset("juice500/DSUChallenge2024").sort("id")
+        #     units_set = datasets.load_dataset(
+        #         "juice500/DSUChallenge2024-wavlm_large-l21-km2000"
+        #     ).sort("id")
 
-            # for key in dataset.keys():
-            for key in [train_split, valid_split]:
+        #     # for key in dataset.keys():
+        #     for key in [train_split, valid_split]:
 
-                def add_units_and_replace_path(example, aid):
-                    assert example["id"] == units_set[key]["id"][aid]
-                    example["units"] = units_set[key]["units"][aid]
-                    example["audio"] = example["audio"].replace(DELTA_DIR, BASE_DIR)
-                    return example
+        #         def add_units_and_replace_path(example, aid):
+        #             assert example["id"] == units_set[key]["id"][aid]
+        #             example["units"] = units_set[key]["units"][aid]
+        #             example["audio"] = example["audio"].replace(DELTA_DIR, BASE_DIR)
+        #             return example
 
-                dataset[key] = dataset[key].map(
-                    add_units_and_replace_path, num_proc=num_proc, with_indices=True
-                )
-            dataset.save_to_disk("asr_data")
+        #         dataset[key] = dataset[key].map(
+        #             add_units_and_replace_path, num_proc=num_proc, with_indices=True
+        #         )
+        #     dataset.save_to_disk("asr_data")
 
         data_info = {
-            "speech": lambda x: librosa.load(x["audio"], sr=sample_rate)[0].astype(
-                np.float32
-            ),
+            "speech": lambda x: librosa.load(
+                    x["audio"].replace(
+                        DELTA_DIR,
+                        BASE_DIR
+                    ), sr=sample_rate)[0].astype(np.float32),
             "text": lambda x: np.array(x["units"]),
         }
-        return dataset, data_info, "train", "test_clean"
+        return dataset, data_info, "train", "dev_clean"
     elif task == "tts":
         # implement TTS training here
         return None, None

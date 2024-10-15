@@ -71,10 +71,10 @@ if __name__ == "__main__":
     trainer = Trainer(
         task=args.task,
         model_config=args.model_config,
-        hf_dataset_or_id="juice500/DSUChallenge2024-wavlm_large-l21-km2000",
         train_args_paths=args.train_config,
         train_split="train",
-        valid_split="test_clean",
+        valid_split="dev_clean",
+        test_splits=["test_clean", "test_other"],
         ngpu=args.ngpu,
         debug=args.debug,
         train=args.run_train,

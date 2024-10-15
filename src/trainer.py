@@ -23,9 +23,11 @@ from espnet2.train.collate_fn import CommonCollateFn
 from ptflops import get_model_complexity_info
 
 from src.model import StreamingDSUModel, get_build_model_fn
+from src.datasets.ASRDataset import ASRDataset
+
 
 DELTA_DIR = "/scratch/bbjs/shared/corpora"
-BASE_DIR = "/home/zhenwu/database"
+BASE_DIR = "/home/masao/database"
 
 STATS_DIR = f"exp/stats"
 
@@ -70,11 +72,10 @@ def log_hardware_info():
 
 def get_dataset(
     task,
-    sample_rate: int = 16000,
-    debug: bool = False,
-    num_proc: int = 1,
+    num_process: int = 1,
     train_split: str = None,
     valid_split: str = None,
+    debug: bool = False,
 ):
     if debug:
         train_dataset = datasets.load_from_disk("debug_data/train")
@@ -90,45 +91,16 @@ def get_dataset(
         # Then we will use the following two datasets:
         # - juice500/DSUChallenge2024-wavlm_large-l21-km2000 for discrete units
         # - juice500/DSUChallenge2024 for audio path, text, and ids.
-        # dataset = None
-        # if os.path.exists("asr_data"):
-        #     dataset = datasets.load_from_disk("asr_data")
 
-        dataset = {
-            'train': datasets.load_dataset("train_subset"),
-            'valid': datasets.load_dataset("dev_clean"),
-        }
-
-        # if dataset is None or "units" not in dataset[train_split].features.keys() or "units" not in dataset[valid_split].features.keys():
-        # if dataset is None or "units" not in dataset[valid_split].features.keys():
-        #     dataset = datasets.load_dataset("juice500/DSUChallenge2024").sort("id")
-        #     units_set = datasets.load_dataset(
-        #         "juice500/DSUChallenge2024-wavlm_large-l21-km2000"
-        #     ).sort("id")
-
-        #     # for key in dataset.keys():
-        #     for key in [train_split, valid_split]:
-
-        #         def add_units_and_replace_path(example, aid):
-        #             assert example["id"] == units_set[key]["id"][aid]
-        #             example["units"] = units_set[key]["units"][aid]
-        #             example["audio"] = example["audio"].replace(DELTA_DIR, BASE_DIR)
-        #             return example
-
-        #         dataset[key] = dataset[key].map(
-        #             add_units_and_replace_path, num_proc=num_proc, with_indices=True
-        #         )
-        #     dataset.save_to_disk("asr_data")
+        train_dataset = ASRDataset(split=train_split, num_proc=num_process)
+        valid_dataset = ASRDataset(split=valid_split, num_proc=num_process)
+        dataset = {train_split: train_dataset, valid_split: valid_dataset}
 
         data_info = {
-            "speech": lambda x: librosa.load(
-                    x["audio"].replace(
-                        DELTA_DIR,
-                        BASE_DIR
-                    ), sr=sample_rate)[0].astype(np.float32),
+            "speech": lambda x: x['audio'],
             "text": lambda x: np.array(x["units"]),
         }
-        return dataset, data_info, "train", "dev_clean"
+        return dataset, data_info, train_split, valid_split
     elif task == "tts":
         # implement TTS training here
         return None, None
@@ -156,11 +128,11 @@ class Trainer:
         self,
         task: str,
         model_config: str,
-        hf_dataset_or_id: Union[str, Dict[str, Any]] = None,
         train_args_paths: Union[str, List[str]] = None,
         exp_dir: Union[Path, str] = "exp",
         train_split: str = "train",
         valid_split: str = "valid",
+        test_splits: Union[str, List[str]] = "test",
         ngpu: int = 1,
         train: bool = True,
         debug: bool = False,
@@ -184,8 +156,8 @@ class Trainer:
         """
         self.model_config = model_config
         self.task = task
-        self.sample_rate = sample_rate
         self.exp_dir = exp_dir
+        self.sample_rate = sample_rate
 
         # load configs
         assert train_args_paths is not None, "train_args_paths must be provided"
@@ -199,11 +171,10 @@ class Trainer:
         # initialize training-related attributes
         dataset, data_info, train_key, dev_key = get_dataset(
             task,
-            sample_rate,
-            debug,
-            train_args["num_workers"],
+            train_args.get("num_process", 1),
             train_split,
             valid_split,
+            debug,
         )
         self.dataset = dataset
         self.data_info = data_info
@@ -351,6 +322,7 @@ class Trainer:
             with torch.no_grad():
                 out = model.inference(**batch[1])
             latency = time.time() - start_time
+            tracker.flush()
 
             if self.task == "asr":
                 results.append(
@@ -381,6 +353,9 @@ class Trainer:
 
             if i < 10:
                 first_ten_latency.append(latency)
+            
+            if i > 20:
+                break
 
             if i > 0:
                 total_latency += latency

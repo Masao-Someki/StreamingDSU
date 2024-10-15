@@ -4,3 +4,4 @@ datasets
 tensorboard
 ptflops
 codecarbon
+editdistance

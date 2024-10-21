@@ -1,0 +1,5 @@
+module: models.TTSBaseline.TTSBaseline
+checkpoint_path: exp/tts_baseline/ckpt/latest.pth
+config_path: exp/tts_baseline/ckpt/config.yaml
+vocoder_path: exp/tts_baseline/vocoder/vocoder.pkl
+vocoder_config_path: exp/tts_baseline/vocoder/config.yml

@@ -23,7 +23,8 @@ from espnet2.train.collate_fn import CommonCollateFn
 from ptflops import get_model_complexity_info
 
 from src.model import StreamingDSUModel, get_build_model_fn
-from src.datasets.ASRDataset import ASRDataset
+from src.datasets import ASRDataset, TTSDataset
+from src.mcd import compute_mcd
 
 
 DELTA_DIR = "/scratch/bbjs/shared/corpora"
@@ -102,8 +103,23 @@ def get_dataset(
         }
         return dataset, data_info, train_split, valid_split
     elif task == "tts":
-        # implement TTS training here
-        return None, None
+        # Then we will use the following two datasets:
+        # - juice500/DSUChallenge2024-wavlm_large-l21-km2000 for discrete units
+        # - juice500/DSUChallenge2024 for audio path, text, and ids.
+
+        train_dataset = TTSDataset(split=train_split, num_proc=num_process)
+        valid_dataset = TTSDataset(split=valid_split, num_proc=num_process)
+        dataset = {
+            train_split: train_dataset,
+            valid_split: valid_dataset
+        }
+
+        data_info = {
+            "speech": lambda x: x['audio'],
+            "text": lambda x: x["text"],
+            "sids": lambda x: x["units"],
+        }
+        return dataset, data_info, train_split, valid_split
 
 
 class Trainer:
@@ -281,42 +297,42 @@ class Trainer:
         tracker = EmissionsTracker(output_dir=self.exp_dir)
         tracker.start()
         for i, batch in tqdm(enumerate(dataloader)):
-            if gmac_value is None:  # computes the FLOPs for the first iteration.
-                try:
-                    speech = batch[1]["speech"]
-                    speech_lengths = batch[1]["speech_lengths"]
-                    text = batch[1]["text"]
-                    text_lengths = batch[1]["text_lengths"]
-                    input_shape = (speech.shape[1],)
+            # if gmac_value is None:  # computes the FLOPs for the first iteration.
+            #     try:
+            #         speech = batch[1]["speech"]
+            #         speech_lengths = batch[1]["speech_lengths"]
+            #         text = batch[1]["text"]
+            #         text_lengths = batch[1]["text_lengths"]
+            #         input_shape = (speech.shape[1],)
 
-                    def input_constructor(input_res):
-                        return {
-                            "speech": torch.randn(1, *input_res).to(speech.device),
-                            "speech_lengths": torch.tensor([speech_lengths.item()]).to(
-                                speech.device
-                            ),
-                            "text": torch.randint(0, 100, (1, text.shape[1])).to(
-                                speech.device
-                            ),
-                            "text_lengths": torch.tensor([text_lengths.item()]).to(
-                                speech.device
-                            ),
-                        }
+            #         def input_constructor(input_res):
+            #             return {
+            #                 "speech": torch.randn(1, *input_res).to(speech.device),
+            #                 "speech_lengths": torch.tensor([speech_lengths.item()]).to(
+            #                     speech.device
+            #                 ),
+            #                 "text": torch.randint(0, 100, (1, text.shape[1])).to(
+            #                     speech.device
+            #                 ),
+            #                 "text_lengths": torch.tensor([text_lengths.item()]).to(
+            #                     speech.device
+            #                 ),
+            #             }
 
-                    macs, params = get_model_complexity_info(
-                        model,
-                        input_shape,
-                        input_constructor=input_constructor,
-                        as_strings=True,
-                        print_per_layer_stat=False,
-                        verbose=False,
-                    )
-                    flops_in_gmac = macs.split()[0]
-                    gmac_value = float(flops_in_gmac)
-                    print(f"FLOPs: {gmac_value} GMac (for one inference example)")
-                except Exception as e:
-                    print(f"Error calculating FLOPs and GMACs: {e}")
-                    gmac_value = str(e)
+            #         macs, params = get_model_complexity_info(
+            #             model,
+            #             input_shape,
+            #             input_constructor=input_constructor,
+            #             as_strings=True,
+            #             print_per_layer_stat=False,
+            #             verbose=False,
+            #         )
+            #         flops_in_gmac = macs.split()[0]
+            #         gmac_value = float(flops_in_gmac)
+            #         print(f"FLOPs: {gmac_value} GMac (for one inference example)")
+            #     except Exception as e:
+            #         print(f"Error calculating FLOPs and GMACs: {e}")
+            #         gmac_value = str(e)
 
             start_time = time.time()
             with torch.no_grad():
@@ -337,32 +353,34 @@ class Trainer:
                 )
 
             if self.task == "tts":
-                # if not os.path.exists(f"{self.exp_dir}/hyp_wavs"):
-                #     os.mkdir(f"{self.exp_dir}/hyp_wavs")
-                # if not os.path.exists(f"{self.exp_dir}/ref_wavs"):
-                #     os.mkdir(f"{self.exp_dir}/ref_wavs")
+                # original_speech = batch[1]["speech"]
+                # synthesized_speech = out["wav"]
+                # mcd = compute_mcd(original_speech, synthesized_speech)
+                results.append(
+                    {
+                        # "mcd": mcd,
+                        "units_fastspeech": out["units_fastspeech"],
+                        # "units_hubert": out["units_hubert"],
+                        "dedup_fastspeech": out["dedup_fastspeech"],
+                        # "dedup_hubert": out["dedup_hubert"],
+                        "ref_units": "".join(
+                            [chr(int("4e00", 16) + c) for c in batch[1]["sids"][0]]
+                        ),
+                    }
+                )
 
-                # sf.write(f"{self.exp_dir}/hyp_wavs/{i}.wav", out["wav"].numpy(), self.sample_rate)
-                # sf.write(f"{self.exp_dir}/ref_wavs/{i}.wav", batch[1]["speech"][0].numpy(), self.sample_rate)
+            # if i < 10:
+            #     first_ten_latency.append(latency)
 
-                # results.append({
-                #     "hyp": f"{self.exp_dir}/hyp_wavs/{i}.wav",
-                #     "ref": f"{self.exp_dir}/ref_wavs/{i}.wav",
-                # })
-                pass
-
-            if i < 10:
-                first_ten_latency.append(latency)
-            
-            if i > 20:
-                break
+            # if i > 1:
+            #     break
 
             if i > 0:
                 total_latency += latency
                 n_samples += 1
 
             if i > 1:  # avoid the first iteration
-                rtfs.append(latency / (speech_lengths.item() / self.sample_rate))
+                rtfs.append(latency / (batch[1]['speech_lengths'].item() / self.sample_rate))
 
         tracker.stop()
         avg_latency = total_latency / n_samples if n_samples > 0 else 0
@@ -378,7 +396,7 @@ class Trainer:
             "average_emissions": avg_emissions,
             "average_energy_consumed": avg_energy_consumed,
             "hardware_info": hardware_info,
-            "first_ten_latency_sec": first_ten_latency,
+            # "first_ten_latency_sec": first_ten_latency,
             "rtf": np.mean(rtfs),
         }
 

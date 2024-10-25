@@ -67,14 +67,24 @@ if __name__ == "__main__":
 
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
+    
+    if args.task == "asr":
+        train_split = "train"
+        valid_split = "dev_clean"
+        test_splits = ["test_clean", "test_other"]
+    
+    elif args.task == "tts":
+        train_split = "train"
+        valid_split = "dev"
+        test_splits = ["test"]
 
     trainer = Trainer(
         task=args.task,
         model_config=args.model_config,
         train_args_paths=args.train_config,
-        train_split="train",
-        valid_split="dev_clean",
-        test_splits=["test_clean", "test_other"],
+        train_split=train_split,
+        valid_split=valid_split,
+        test_splits=test_splits,
         ngpu=args.ngpu,
         debug=args.debug,
         train=args.run_train,

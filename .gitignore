@@ -163,3 +163,5 @@ cython_debug/
 
 # Project related
 exp/*
+hub/*
+tools/miniconda/*

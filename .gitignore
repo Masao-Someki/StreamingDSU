@@ -167,3 +167,4 @@ asr_data/*
 data/*
 .vscode/*
 hub/*
+tools/miniconda/*

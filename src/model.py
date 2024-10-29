@@ -75,8 +75,7 @@ class StreamingDSUModel(AbsESPnetModel):
 
     def _log_stats(self) -> None:
         """Logs the accumulated statistics."""
-        text = ""
-        self.internal_counter = 0
+        text = f"Stats on iteration {self.internal_counter}: "
         for key in self.log_stats:
             if isinstance(self.log_stats[key][0], torch.Tensor):
                 self.log_stats[key] = [

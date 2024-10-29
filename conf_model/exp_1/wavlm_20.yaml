@@ -1,0 +1,3 @@
+module: models.experiment_1.Exp1
+huggingface_model: wavlm_large
+layer: 20

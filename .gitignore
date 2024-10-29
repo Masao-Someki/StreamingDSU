@@ -163,3 +163,7 @@ cython_debug/
 
 # Project related
 exp/*
+asr_data/*
+data/*
+.vscode/*
+hub/*

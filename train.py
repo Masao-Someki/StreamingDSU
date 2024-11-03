@@ -70,7 +70,8 @@ if __name__ == "__main__":
     
     if args.task == "asr":
         train_split = "train"
-        valid_split = "dev_clean"
+        valid_split = "dev"
+        # valid_split = "dev_other"
         test_splits = ["test_clean", "test_other"]
     
     elif args.task == "tts":

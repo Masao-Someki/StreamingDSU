@@ -1,0 +1,3 @@
+module: models.experiment_1.Exp1TTSModel
+huggingface_model: hubert_base
+layer: 6

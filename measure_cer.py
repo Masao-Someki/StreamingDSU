@@ -24,7 +24,8 @@ if __name__ == "__main__":
     cer_dedup = []
     for i in range(len(results)):
         hyp = results[i]["hyp"].lower().translate(str.maketrans('', '', string.punctuation))
-        ref = valid_ds[i]["text"].lower().translate(str.maketrans('', '', string.punctuation))
+        # ref = valid_ds[i]["text"].lower().translate(str.maketrans('', '', string.punctuation))
+        ref = results[i]["ref"].lower().translate(str.maketrans('', '', string.punctuation))
         cer = editdistance.eval(hyp, ref) / len(ref)
         cers.append(cer)
 

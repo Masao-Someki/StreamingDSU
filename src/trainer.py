@@ -27,10 +27,7 @@ from src.datasets import ASRDataset, TTSDataset
 from src.mcd import compute_mcd
 
 
-DELTA_DIR = "/scratch/bbjs/shared/corpora"
-BASE_DIR = "/home/masao/database"
-
-STATS_DIR = f"exp/stats"
+STATS_DIR = f"exp_1/stats"
 
 
 def count_parameters(model):
@@ -69,6 +66,26 @@ def log_hardware_info():
     print(f"RAM: {hardware_info['ram_total_gb']:.2f} GB total, {hardware_info['ram_available_gb']:.2f} GB available")
 
     return hardware_info
+
+
+def get_test_dataset(
+    task,
+    num_process: int = 1,
+    test_splits: Union[str, List[str]] = None,
+):
+    dataset = {}
+    if task == "asr":
+        data_info = {
+            "speech": lambda x: x['audio'],
+            "text": lambda x: np.array(x["units"]),
+        }
+        for t in test_splits:
+            dataset[t] = ez.dataset.ESPnetEZDataset(
+                ASRDataset(split=t, num_proc=num_process), data_info=data_info
+            )
+
+        
+        return dataset, data_info
 
 
 def get_dataset(
@@ -187,7 +204,7 @@ class Trainer:
         # initialize training-related attributes
         dataset, data_info, train_key, dev_key = get_dataset(
             task,
-            train_args.get("num_process", 1),
+            train_args.get("num_workers", 1),
             train_split,
             valid_split,
             debug,
@@ -216,6 +233,10 @@ class Trainer:
                 output_dir=exp_dir,
                 stats_dir=STATS_DIR,
                 ngpu=ngpu,
+            )
+        else:
+            self.test_data, _ = get_test_dataset(
+                "asr", train_args.get("num_workers", 1), test_splits
             )
 
     def train(self) -> None:
@@ -273,144 +294,146 @@ class Trainer:
             model = get_build_model_fn(self.model_config)()
 
         # evaluate
-        print(f"Evaluating on test data using checkpoint: {checkpoint_path}")
-        dataloader = torch.utils.data.DataLoader(
-            self.valid_dataset,
-            batch_size=1,
-            shuffle=False,
-            num_workers=num_workers,
-            pin_memory=True,
-            collate_fn=CommonCollateFn(float_pad_value=0.0, int_pad_value=-1),
-        )
+        for test_key in self.test_data.keys():
+            print(f"Evaluating on test data using checkpoint: {checkpoint_path}")
+            dataloader = torch.utils.data.DataLoader(
+                self.test_data[test_key],
+                batch_size=1,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=True,
+                collate_fn=CommonCollateFn(float_pad_value=0.0, int_pad_value=-100),
+            )
 
-        hardware_info = log_hardware_info()
-        total_params = count_parameters(model)
-        print(f"Total parameters: {total_params}")
+            hardware_info = log_hardware_info()
+            total_params = count_parameters(model)
+            print(f"Total parameters: {total_params}")
 
-        total_latency = 0
-        n_samples = 0
-        gmac_value = None
-        first_ten_latency = []
-        rtfs = []
-        results = []
+            total_latency = 0
+            n_samples = 0
+            gmac_value = None
+            first_ten_latency = []
+            rtfs = []
+            results = []
 
-        tracker = EmissionsTracker(output_dir=self.exp_dir)
-        tracker.start()
-        for i, batch in tqdm(enumerate(dataloader)):
-            # if gmac_value is None:  # computes the FLOPs for the first iteration.
-            #     try:
-            #         speech = batch[1]["speech"]
-            #         speech_lengths = batch[1]["speech_lengths"]
-            #         text = batch[1]["text"]
-            #         text_lengths = batch[1]["text_lengths"]
-            #         input_shape = (speech.shape[1],)
+            # tracker = EmissionsTracker(output_dir=self.exp_dir)
+            # tracker.start()
+            for i, batch in tqdm(enumerate(dataloader)):
+                # if gmac_value is None:  # computes the FLOPs for the first iteration.
+                #     try:
+                #         speech = batch[1]["speech"]
+                #         speech_lengths = batch[1]["speech_lengths"]
+                #         text = batch[1]["text"]
+                #         text_lengths = batch[1]["text_lengths"]
+                #         input_shape = (speech.shape[1],)
 
-            #         def input_constructor(input_res):
-            #             return {
-            #                 "speech": torch.randn(1, *input_res).to(speech.device),
-            #                 "speech_lengths": torch.tensor([speech_lengths.item()]).to(
-            #                     speech.device
-            #                 ),
-            #                 "text": torch.randint(0, 100, (1, text.shape[1])).to(
-            #                     speech.device
-            #                 ),
-            #                 "text_lengths": torch.tensor([text_lengths.item()]).to(
-            #                     speech.device
-            #                 ),
-            #             }
+                #         def input_constructor(input_res):
+                #             return {
+                #                 "speech": torch.randn(1, *input_res).to(speech.device),
+                #                 "speech_lengths": torch.tensor([speech_lengths.item()]).to(
+                #                     speech.device
+                #                 ),
+                #                 "text": torch.randint(0, 100, (1, text.shape[1])).to(
+                #                     speech.device
+                #                 ),
+                #                 "text_lengths": torch.tensor([text_lengths.item()]).to(
+                #                     speech.device
+                #                 ),
+                #             }
 
-            #         macs, params = get_model_complexity_info(
-            #             model,
-            #             input_shape,
-            #             input_constructor=input_constructor,
-            #             as_strings=True,
-            #             print_per_layer_stat=False,
-            #             verbose=False,
-            #         )
-            #         flops_in_gmac = macs.split()[0]
-            #         gmac_value = float(flops_in_gmac)
-            #         print(f"FLOPs: {gmac_value} GMac (for one inference example)")
-            #     except Exception as e:
-            #         print(f"Error calculating FLOPs and GMACs: {e}")
-            #         gmac_value = str(e)
+                #         macs, params = get_model_complexity_info(
+                #             model,
+                #             input_shape,
+                #             input_constructor=input_constructor,
+                #             as_strings=True,
+                #             print_per_layer_stat=False,
+                #             verbose=False,
+                #         )
+                #         flops_in_gmac = macs.split()[0]
+                #         gmac_value = float(flops_in_gmac)
+                #         print(f"FLOPs: {gmac_value} GMac (for one inference example)")
+                #     except Exception as e:
+                #         print(f"Error calculating FLOPs and GMACs: {e}")
+                #         gmac_value = str(e)
 
-            start_time = time.time()
-            with torch.no_grad():
-                out = model.inference(**batch[1])
-            latency = time.time() - start_time
-            tracker.flush()
+                start_time = time.time()
+                with torch.no_grad():
+                    out = model.inference(**batch[1])
+                latency = time.time() - start_time
+                # tracker.flush()
 
-            if self.task == "asr":
-                results.append(
-                    {
-                        "hyp": out["text"],
-                        "hyp_units": out["units"],
-                        "hyp_units_dedup": out["deduplicated_units"],
-                        "ref_units": "".join(
-                            [chr(int("4e00", 16) + c) for c in batch[1]["text"][0]]
-                        ),
-                    }
-                )
+                if self.task == "asr":
+                    results.append(
+                        {
+                            "hyp": out["text"],
+                            "ref": out["true_label"],
+                            "hyp_units": out["units"],
+                            "hyp_units_dedup": out["deduplicated_units"],
+                            "ref_units": "".join(
+                                [chr(int("4e00", 16) + c) for c in batch[1]["text"][0]]
+                            ),
+                        }
+                    )
 
-            if self.task == "tts":
-                # original_speech = batch[1]["speech"]
-                # synthesized_speech = out["wav"]
-                # mcd = compute_mcd(original_speech, synthesized_speech)
-                results.append(
-                    {
-                        # "mcd": mcd,
-                        "units_fastspeech": out["units_fastspeech"],
-                        # "units_hubert": out["units_hubert"],
-                        "dedup_fastspeech": out["dedup_fastspeech"],
-                        # "dedup_hubert": out["dedup_hubert"],
-                        "ref_units": "".join(
-                            [chr(int("4e00", 16) + c) for c in batch[1]["sids"][0]]
-                        ),
-                    }
-                )
+                if self.task == "tts":
+                    # original_speech = batch[1]["speech"]
+                    # synthesized_speech = out["wav"]
+                    # mcd = compute_mcd(original_speech, synthesized_speech)
+                    results.append(
+                        {
+                            # "mcd": mcd,
+                            "units_fastspeech": out["units_fastspeech"],
+                            # "units_hubert": out["units_hubert"],
+                            "dedup_fastspeech": out["dedup_fastspeech"],
+                            # "dedup_hubert": out["dedup_hubert"],
+                            "ref_units": "".join(
+                                [chr(int("4e00", 16) + c) for c in batch[1]["sids"][0]]
+                            ),
+                        }
+                    )
 
-            # if i < 10:
-            #     first_ten_latency.append(latency)
+                # if i < 10:
+                #     first_ten_latency.append(latency)
 
-            # if i > 1:
-            #     break
+                # if i > 10:
+                #     break
 
-            if i > 0:
-                total_latency += latency
-                n_samples += 1
+                if i > 0:
+                    total_latency += latency
+                    n_samples += 1
 
-            if i > 1:  # avoid the first iteration
-                rtfs.append(latency / (batch[1]['speech_lengths'].item() / self.sample_rate))
+                if i > 1:  # avoid the first iteration
+                    rtfs.append(latency / (batch[1]['speech_lengths'].item() / self.sample_rate))
 
-        tracker.stop()
-        avg_latency = total_latency / n_samples if n_samples > 0 else 0
-        print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
-        avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
+            # tracker.stop()
+            avg_latency = total_latency / n_samples if n_samples > 0 else 0
+            # print(f"Average inference latency (after warm-up): {avg_latency:.6f} seconds")
+            # avg_emissions, avg_energy_consumed = compute_emissions_and_energy(f'{self.exp_dir}/emissions.csv', n_samples+1)
 
-        model._log_stats()
+            model._log_stats()
 
-        metrics = {
-            "flops_gmac": gmac_value,
-            "parameters": total_params,
-            "average_latency_sec": avg_latency,
-            "average_emissions": avg_emissions,
-            "average_energy_consumed": avg_energy_consumed,
-            "hardware_info": hardware_info,
-            # "first_ten_latency_sec": first_ten_latency,
-            "rtf": np.mean(rtfs),
-        }
+            metrics = {
+                "flops_gmac": gmac_value,
+                "parameters": total_params,
+                "average_latency_sec": avg_latency,
+                # "average_emissions": avg_emissions,
+                # "average_energy_consumed": avg_energy_consumed,
+                "hardware_info": hardware_info,
+                # "first_ten_latency_sec": first_ten_latency,
+                "rtf": np.mean(rtfs),
+            }
 
-        Path(self.exp_dir).mkdir(parents=True, exist_ok=True)
-        metrics_file_path = Path(self.exp_dir) / "efficiency_metrics.json"
-        with open(metrics_file_path, "w") as f:
-            json.dump(metrics, f, indent=4)
+            Path(self.exp_dir).mkdir(parents=True, exist_ok=True)
+            metrics_file_path = Path(self.exp_dir) / "efficiency_metrics.json"
+            with open(metrics_file_path, "w") as f:
+                json.dump(metrics, f, indent=4)
 
-        print(f"Efficiency metrics saved to {metrics_file_path}")
+            print(f"Efficiency metrics saved to {metrics_file_path}")
 
-        with open(Path(self.exp_dir) / "results.json", "w") as f:
-            json.dump(results, f, indent=4)
+            with open(Path(self.exp_dir) / f"{test_key}_results.json", "w") as f:
+                json.dump(results, f, indent=4)
 
-        print(f"Results saved to {metrics_file_path}")
+            print(f"Results saved to {metrics_file_path}")
 
     def eval_quantize(self, checkpoint_path: str, config: str = None) -> None:
         """Evaluates the model with quantization applied.

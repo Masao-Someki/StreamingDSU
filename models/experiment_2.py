@@ -31,6 +31,7 @@ class Exp2(nn.Module):
         **kwargs,
     ):
         super().__init__()
+        self.huggingface_model = huggingface_model
         self.model = S3prlFrontend(
             fs=16000,
             frontend_conf={
@@ -41,17 +42,19 @@ class Exp2(nn.Module):
             layer=layer,
         )
         # Frozen parameter
+        self.frozen_ssl = frozen_ssl
         if frozen_ssl:
             self.model.eval()
             for param in self.model.parameters():
                 param.requires_grad = False
 
-        self.clustering_head = nn.Linear(1024, 2000)
+        self.clustering_head = nn.Linear(768, 2000)
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)
+        self.use_centroid = use_centroid
 
         if self.use_centroid:
-            self.centroid_head = nn.Linear(1024, 1024)
-            self.centroid_loss = nn.L1Loss(1024)
+            self.centroid_head = nn.Linear(768, 1024)
+            self.centroid_loss = nn.L1Loss(768)
 
         if cluster_checkpoint is not None:
             d = torch.load(cluster_checkpoint)
@@ -94,7 +97,7 @@ class Exp2(nn.Module):
         units = self.clustering_head(feats) # (B, T, Cluster)
         ce_loss = self.loss(units.transpose(1, 2), text)
 
-        centroid_loss = 0
+        centroid_loss = 0.
         if self.use_centroid:
             C_label = self.C[text].detach()
             cents = self.centroid_head(feats)
@@ -109,7 +112,17 @@ class Exp2(nn.Module):
         acc /= units.shape[0]
         loss = ce_loss + centroid_loss
 
-        return loss, {"ce_loss": ce_loss.item(), "centroid_loss": centroid_loss.item(),"acc": acc}
+        if self.use_centroid:
+            return loss, {
+                "ce_loss": ce_loss.item(),
+                "centroid_loss": centroid_loss.item(),
+                "acc": acc
+            }
+        else:
+            return loss, {
+                "ce_loss": ce_loss.item(),
+                "acc": acc
+            }
 
 
     def inference(
@@ -145,16 +158,22 @@ class Exp2(nn.Module):
         bpe_tokens = torch.Tensor(bpe_tokens).to(speech.device)
         results = self.mt_model(bpe_tokens)
 
-
         return {
             "text": hyp_results[0][0],
             "true_label": results[0][0],
             "units": cjk_units,
             "deduplicated_units": cjk_tokens_hyp,
         }
-
-    def state_dict(self, *args, **kwargs):
-        return self.clustering_head.state_dict(*args, **kwargs)
+    
+    def state_dict(self):
+        if self.frozen_ssl:
+            return self.clustering_head.state_dict()
+        else:
+            return {
+                "model": self.clustering_head.state_dict(),
+                "ssl": self.model.state_dict(),
+                "ssl_model": self.huggingface_model,
+            }
 
 
 class Exp2TTSModel(nn.Module):

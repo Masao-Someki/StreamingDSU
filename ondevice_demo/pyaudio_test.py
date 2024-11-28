@@ -12,6 +12,12 @@ OUTPUT_FILENAME = "output_streamed.wav"  # Output file name
 # Initialize PyAudio object
 p = pyaudio.PyAudio()
 
+device_count = p.get_device_count()
+for i in range(device_count):
+    device_info = p.get_device_info_by_index(i)
+    print(f"Device {i}: {device_info['name']} (Input: {device_info['maxInputChannels']} channels)")
+
+
 # Open the stream with a callback
 def audio_callback(indata, frames, time, status):
     """
@@ -30,7 +36,8 @@ if __name__ == "__main__":
                     rate=RATE,
                     input=True,
                     frames_per_buffer=CHUNK,
-                    stream_callback=audio_callback)
+                    stream_callback=audio_callback,
+                    input_device_index=1)
 
     # Start the stream
     print("Start stream...")

@@ -7,16 +7,16 @@ class Constants:
     sample_rate = 16_000
     window_size = int(sample_rate * 0.5)
     stride_size = int(sample_rate * 0.05)
-    server = "http://localhost:41589"
+    server = "http://localhost:31589/asr"
 
 # Globals
 audio_buffer = None
-token_buffer = None
+token_buffer = []
 hidden_state = None
 
 
 def audio_callback(indata, frames, time, status):
-    global audio_buffer
+    global audio_buffer, token_buffer
 
     # Prepare input audio
     new_audio = indata.flatten()
@@ -26,15 +26,20 @@ def audio_callback(indata, frames, time, status):
         audio_buffer = np.concatenate((audio_buffer, new_audio))[-Constants.window_size:]
 
     if len(audio_buffer) == Constants.window_size:
-        print(audio_buffer.shape)
-        # response = requests.post(Constants.server, json={"tokens": [42, 0, 1, 2, 3]})
-        # print(response)
+        token = inference(audio_buffer)
+        token_buffer.append(token)
+        token_buffer = token_buffer[-128:]
+
+        response = requests.post(Constants.server, json={"tokens": token_buffer})
+        print(token_buffer)
+        print(response.json()["text"])
 
 
 def load_model():
     return "This is a model."
 
 def inference(audio):
+    print(model)
     return 0
 
 def send(token):

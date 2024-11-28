@@ -16,7 +16,7 @@ hidden_state = None
 
 
 def audio_callback(indata, frames, time, status):
-    global audio_buffer, token_buffer
+    global audio_buffer, token_buffer, hidden_state
 
     # Prepare input audio
     new_audio = indata.flatten()
@@ -26,7 +26,7 @@ def audio_callback(indata, frames, time, status):
         audio_buffer = np.concatenate((audio_buffer, new_audio))[-Constants.window_size:]
 
     if len(audio_buffer) == Constants.window_size:
-        token = inference(audio_buffer)
+        token, hidden_state = inference(audio_buffer, hidden_state)
         token_buffer.append(token)
         token_buffer = token_buffer[-128:]
 
@@ -38,8 +38,8 @@ def audio_callback(indata, frames, time, status):
 def load_model():
     return "This is a model."
 
-def inference(audio):
-    print(model)
+def inference(audio, hidden_state):
+    # 
     return 0
 
 def send(token):
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     model = load_model()
 
     try:
-        with sd.InputStream(callback=audio_callback, channels=1, samplerate=16000, blocksize=Constants.stride_size):
+        with sd.InputStream(device=2, callback=audio_callback, channels=1, samplerate=16000, blocksize=Constants.stride_size):
             print("Listening... Press Ctrl+C to stop.")
             while True:  # Keep the stream open indefinitely
                 sd.sleep(1000)  # Sleep for 1 second at a time to keep the stream alive

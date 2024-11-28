@@ -1,6 +1,7 @@
 from itertools import groupby
 
 from flask import Flask, request, jsonify
+import torch
 import torch.nn as nn
 
 from espnet2.bin.mt_inference import Text2Text
@@ -16,24 +17,26 @@ class Token2Text(nn.Module):
         self,
         mt_train_config: str,
         mt_model_file: str,
-        bpemodel: str,
+        src_bpemodel: str,
+        tgt_bpemodel: str,
         token_list: str,
     ):
-        super.__init__()
+        super().__init__()
         self.mt_model = Text2Text(
             mt_train_config=mt_train_config,
             mt_model_file=mt_model_file,
             beam_size=20,
             ctc_weight=0.3,
             lm_weight=0.0,
+            bpemodel=tgt_bpemodel,
         )
         self.tokenizer = build_tokenizer(
             token_type="bpe",
-            bpemodel=bpemodel,
+            bpemodel=src_bpemodel,
         )
         self.converter = TokenIDConverter(token_list=token_list)
 
-    def inference(self, units: list[int]):
+    def forward(self, units: list[int]):
         # De-duplicate units
         deduplicated_units = [x[0] for x in groupby(units)]
 
@@ -44,7 +47,7 @@ class Token2Text(nn.Module):
         bpe_tokens = self.converter.tokens2ids(bpe_tokens)
 
         # Inference using the MT model
-        bpe_tokens = torch.Tensor(bpe_tokens).to(self.mt_model.device)
+        bpe_tokens = torch.LongTensor(bpe_tokens).to(self.mt_model.device)
         results = self.mt_model(bpe_tokens)
 
         return {
@@ -55,7 +58,13 @@ class Token2Text(nn.Module):
 
 
 def load_model():
-    return Token2Text()
+    return Token2Text(
+        mt_train_config="baseline/exp/wavlm_baseline/config.yaml",
+        mt_model_file="baseline/exp/wavlm_baseline/valid.acc.ave_10best.pth",
+        src_bpemodel="baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model",
+        tgt_bpemodel="baseline/data/token_list/tgt_bpe_unigram6500_ts_en/bpe.model",
+        token_list="baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt",
+    )
 
 device = "cpu"
 model = load_model().to(device)

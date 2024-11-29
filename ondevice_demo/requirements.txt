@@ -1,3 +1,4 @@
 sounddevice
 flask
 requests
+onnxruntime

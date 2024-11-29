@@ -1,0 +1,4 @@
+module: models.convrnn.Exp4
+kernel_size: 3
+n_convs: 2
+h_units: 1024

@@ -19,6 +19,11 @@ h_in = np.zeros((1, 1, 1024)).astype(np.float32)
 c_in = np.zeros((1, 1, 1024)).astype(np.float32)
 
 
+def request_callback(tokens):
+    resp = requests.post(Constants.server, json={"tokens": token_buffer}).json()
+    print(resp["text"])
+
+
 def audio_callback(indata, frames, time, status):
     global audio_buffer, token_buffer, h_in, c_in
 
@@ -32,15 +37,13 @@ def audio_callback(indata, frames, time, status):
     if len(audio_buffer) == Constants.window_size:
         token, h_in, c_in = inference(audio_buffer, h_in, c_in)
         token_buffer.append(token)
-        token_buffer = token_buffer[-128:]
-
-        threading.Thread(
-            target=requests.post,
-            kwargs={"url": Constants.server, "json": {"tokens": token_buffer}},
-        ).start()
-        #response = requests.post(Constants.server, json={"tokens": token_buffer})
-        #print(token_buffer)
-        #print(response.json()["text"])
+        
+        if len(token_buffer) % 32 == 31:
+            threading.Thread(
+                target=request_callback,
+                args=(token_buffer, ),
+            ).start()
+            token_buffer = token_buffer[-128:]
 
 
 def load_model():

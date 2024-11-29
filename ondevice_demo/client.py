@@ -66,7 +66,7 @@ if __name__ == "__main__":
     model = load_model()
 
     try:
-        with sd.InputStream(callback=audio_callback, channels=1, samplerate=16000, blocksize=Constants.stride_size):
+        with sd.InputStream(device=2, callback=audio_callback, channels=1, samplerate=16000, blocksize=Constants.stride_size):
             print("Listening... Press Ctrl+C to stop.")
             while True:  # Keep the stream open indefinitely
                 sd.sleep(1000)  # Sleep for 1 second at a time to keep the stream alive

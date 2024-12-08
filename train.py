@@ -1,108 +1,61 @@
 import argparse
-import datetime
-import logging
-import sys
-from importlib import import_module
-from logging import FileHandler
-from pathlib import Path
+from pprint import pprint
+
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
 
 import espnetez as ez
-import torch
-import yaml
 
-from src.trainer import Trainer
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train model.")
-    parser.add_argument("--task", type=str, default="asr", help="Task name.")
-    parser.add_argument(
-        "--model_config", type=str, default=None, help="Yaml config for training."
-    )
-    parser.add_argument(
-        "--train_config",
-        type=str,
-        default=None,
-        help="Yaml config for training. Same format as ESPnet recipes.",
-    )
-    parser.add_argument("--ngpu", type=int, default=1, help="Number of GPUs to use.")
-    parser.add_argument(
-        "--run_train",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--evaluate",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--eval_quantize",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--export_onnx",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--ckpt",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--quantize_config",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        default=False,
-    )
-    parser.add_argument(
-        "--exp_dir", type=str, default="exp", help="Directory to save experimental results."
-    )
+# parse command-line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train a neural network for speech synthesis')
+
+    # general arguments
+    parser.add_argument('--expdir', type=str, default='./results', help='Path to save the trained model')
+    parser.add_argument('--config', type=str, required=True, help='Path to the model configuration file')
+
     args = parser.parse_args()
+    return args
 
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    
-    if args.task == "asr":
-        train_split = "train"
-        valid_split = "dev"
-        # valid_split = "dev_other"
-        test_splits = ["test_clean", "test_other"]
-    
-    elif args.task == "tts":
-        train_split = "train"
-        valid_split = "dev"
-        test_splits = ["test"]
 
-    trainer = Trainer(
-        task=args.task,
-        model_config=args.model_config,
-        train_args_paths=args.train_config,
-        train_split=train_split,
-        valid_split=valid_split,
-        test_splits=test_splits,
-        ngpu=args.ngpu,
-        debug=args.debug,
-        train=args.run_train,
-        exp_dir=args.exp_dir,  # Update this with your desired experiment directory path.
+if __name__ == '__main__':
+    # Step 0. Parse command-line arguments and load configuration
+    args = parse_args()
+    config = OmegaConf.load(args.config)
+    pprint(args)
+    pprint(config)
+
+    # Step 1. Setup dataset
+    data_info = {
+        "speech": lambda x: x['audio'],
+        "text": lambda x: np.array(x["units"]),
+    }
+    train_dataset = ez.dataset.ESPnetEZDataset(
+        instantiate(config.train_dataset),
+        data_info=data_info
     )
+    dev_dataset = ez.dataset.ESPnetEZDataset(
+        instantiate(config.dev_dataset),
+        data_info=data_info
+    )
+    print(f'data_info: {data_info}')
+    print(f'Number of training samples: {len(train_dataset)}')
+    print(f'Number of validation samples: {len(dev_dataset)}')
 
-    if args.run_train:
-        trainer.train()
-        if args.ckpt:
-            args.ckpt = Path(args.ckpt).parent / "latest.pth"
+    # Step 2. Setup model
+    model = instantiate(config.model)
+    print(model)
 
-    if args.evaluate:
-        trainer.evaluate(args.ckpt, num_workers=4)
+    # Step 3. Train the model
+    trainer = ez.Trainer(
+        task=config.task,
+        train_config=config,
+        train_dataset=train_dataset,
+        valid_dataset=dev_dataset,
+        data_info=data_info,
+        output_dir=expdir,
+        ngpu=1
+    )
+    trainer.train()
 
-    if args.eval_quantize:
-        trainer.eval_quantize(args.ckpt, args.quantize_config)
-
-    if args.export_onnx:
-        trainer.export_onnx(args.ckpt)
-        args.ckpt = Path(args.ckpt).stem + ".onnx"

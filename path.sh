@@ -1,5 +1,8 @@
 #!/bin/bash
 
-. tools/activate_python.sh
+eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/github
 
-export HF_HOME=./hub
+. ~/workspace/activate_python.sh
+
+export HF_HOME=~/workspace/hub

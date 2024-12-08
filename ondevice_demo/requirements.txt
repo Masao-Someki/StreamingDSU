@@ -1,4 +1,0 @@
-sounddevice
-flask
-requests
-onnxruntime

@@ -13,6 +13,7 @@ from espnet2.gan_tts.wavenet.residual_block import Conv1d1x1
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
 from espnet.nets.pytorch_backend.nets_utils import pad_list
+from espnet2.train.abs_espnet_model import AbsESPnetModel
 
 from .utils import ApplyKmeans
 
@@ -113,7 +114,7 @@ class RNN(nn.Module):
             return ret
 
 
-class ConvRNN(nn.Module):
+class ConvRNN(AbsESPnetModel):
     def __init__(
         self,
         in_dim=128, kernel_size=3, n_convs=2, conv_type='glu',
@@ -142,7 +143,7 @@ class ConvRNN(nn.Module):
         )
 
         rec_field = kernel_size ** n_convs
-        print(f"Receptive field: {rec_field * 50} ms")
+        print(f"Receptive field: {rec_field * 20} ms")
         self.padding = nn.ConstantPad1d(int((rec_field - 1) / 2), 0)
         self.rnn = RNN(in_dim, kernel_size, n_convs,
             rnn_type, h_units, n_layers, output_hidden_state)
@@ -189,7 +190,7 @@ class ConvRNN(nn.Module):
             acc += torch.sum(selected_cls == text[b][:x.size(1)]) / text_length
         acc /= x.shape[0]
         
-        return ce_loss, {"loss": ce_loss.item(), "acc": acc}
+        return ce_loss, {"loss": ce_loss.item(), "acc": acc}, None
 
 
     def inference(
@@ -237,3 +238,13 @@ class ConvRNN(nn.Module):
             "units": cjk_units,
             "deduplicated_units": cjk_tokens_hyp,
         }
+
+    def collect_feats(
+        self,
+        speech: torch.Tensor,
+        speech_lengths: torch.Tensor,
+        text: torch.Tensor,
+        text_lengths: torch.Tensor,
+        **kwargs,
+    ):
+        return {"feats": speech, "feats_lengths": speech_lengths}

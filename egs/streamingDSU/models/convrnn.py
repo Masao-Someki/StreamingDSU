@@ -190,7 +190,7 @@ class ConvRNN(AbsESPnetModel):
             acc += torch.sum(selected_cls == text[b][:x.size(1)]) / text_length
         acc /= x.shape[0]
         
-        return ce_loss, {"loss": ce_loss.item(), "acc": acc}, None
+        return ce_loss, {"loss": ce_loss.item(), "acc": acc.item()}, None
 
 
     def inference(

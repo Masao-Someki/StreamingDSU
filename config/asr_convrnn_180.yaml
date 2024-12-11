@@ -6,7 +6,7 @@ train_dataset:
 
 dev_dataset:
   _target_: egs.streamingDSU.ASRDataset
-  split: test_clean
+  split: dev
   num_proc: 2
 
 # Model
@@ -30,8 +30,8 @@ train:
   accum_grad: 1
   grad_clip: 1.0
   max_epoch: 20
-  patience: none
-  init: none
+  patience:
+  init: 
   best_model_criterion:
   -   - valid
       - acc

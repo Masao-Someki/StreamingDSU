@@ -1,6 +1,0 @@
-module: models.experiment_1.Exp1
-huggingface_model: wavlm_large
-layer: 11
-bpemodel_path: data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model
-token_list: data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt
-checkpoint_path: exp_1/lr0001_step09_layer11_wavlm/valid.acc.ave_3best.pth

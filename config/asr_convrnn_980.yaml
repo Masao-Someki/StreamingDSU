@@ -1,0 +1,49 @@
+# Dataset
+train_dataset:
+  _target_: egs.streamingDSU.ASRDataset
+  split: train
+  num_proc: 2
+
+dev_dataset:
+  _target_: egs.streamingDSU.ASRDataset
+  split: dev
+  num_proc: 2
+
+# Model
+model:
+  _target_: egs.streamingDSU.ConvRNN
+  kernel_size: 7
+  n_convs: 2
+  h_units: 1024
+
+# ESPnetEZ   related
+task: asr
+
+# ESPnet related
+train:
+  seed: 2022
+  log_interval: 500
+  num_workers: 4
+  batch_type: numel
+  batch_size: 16
+  batch_bins: 4500000
+  accum_grad: 1
+  grad_clip: 1.0
+  max_epoch: 20
+  patience: none
+  init: none
+  best_model_criterion:
+  -   - valid
+      - acc
+      - max
+  keep_nbest_models: 3
+  use_amp: false
+
+  optim: adamw
+  optim_conf:
+      lr: 0.0001
+      weight_decay: 0.000001
+  scheduler: steplr
+  scheduler_conf:
+      step_size: 1000
+      gamma: 0.9

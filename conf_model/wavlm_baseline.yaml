@@ -1,7 +1,0 @@
-module: models.ASRBaseline.WavLMBaselnie
-checkpoint_path: exp/wavlm_baseline/valid.acc.ave_10best.pth
-config_path: exp/wavlm_baseline/config.yaml
-kmeans_path: exp/wavlm_baseline/km_2000.mdl
-bpemodel_path: data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model
-token_list: data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt
-use_gpu_kmeans: true

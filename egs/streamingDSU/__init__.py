@@ -5,3 +5,4 @@ from .dataset.SVSDataset import SVSDataset
 
 # models
 from .models.convrnn import ConvRNN
+from .models.cvrnn_posemb import ConvRNNPosemb

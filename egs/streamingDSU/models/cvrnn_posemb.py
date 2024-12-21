@@ -14,107 +14,16 @@ from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
 from espnet.nets.pytorch_backend.nets_utils import pad_list
 from espnet2.train.abs_espnet_model import AbsESPnetModel
+from espnet.nets.pytorch_backend.transformer.embedding import (  # noqa: H301
+    PositionalEncoding,
+)
 
 from .utils import ApplyKmeans
+from .convrnn import DilConv, RNN
 
 
-class GLU(nn.Module):
-    def __init__(self, in_dim, out_dim, kernel_size, dilation):
-        super(GLU, self).__init__()
-        self.out_dim = out_dim
 
-        self.conv = nn.Conv1d(in_dim, out_dim * 2, kernel_size, dilation=dilation)
-
-    def forward(self, x):
-        x = self.conv(x) # (B, D, L) to (B, D*2, L)
-        x_base = x[:, :self.out_dim]
-        x_sigma = x[:, self.out_dim:]
-
-        return x_base * torch.sigmoid(x_sigma)
-
-
-class DilConv(nn.Module):
-    def __init__(self, in_dim=80, kernel_size=3, n_convs=2, conv_type='glu'):
-        super(DilConv, self).__init__()
-
-        # DilConv
-        self.convs = nn.ModuleList()
-
-        for i in range(n_convs):
-            if conv_type == 'glu':
-                # Gated Linear Units
-                self.convs += [
-                        GLU(in_dim * kernel_size ** i,
-                            in_dim * kernel_size ** (i + 1),
-                            kernel_size,
-                            kernel_size ** i
-                        )
-                ]
-            elif conv_type == 'linear':
-                # Normal conv1d
-                self.convs += [
-                        nn.Conv1d(
-                            in_dim * kernel_size ** i,
-                            in_dim * kernel_size ** (i + 1),
-                            kernel_size,
-                            dilation=kernel_size ** i
-                        )
-                ]
-            else:
-                raise ValueError('conv type %s is not supported now.' % conv_type)
-
-        # dropout
-        self.dropout = nn.Dropout(p=0.5)
-
-    def forward(self, x):
-        for i, layer in enumerate(self.convs):
-            x = layer(x)
-        x = self.dropout(x)
-        return x
-
-
-class RNN(nn.Module):
-    def __init__(self, in_dim, kernel_size, n_convs,
-        rnn_type="lstm", h_units=512, n_layers=1, output_hidden_state=False):
-        super(RNN, self).__init__()
-        self.in_dim = in_dim * kernel_size ** n_convs
-        self.n_layers = n_layers
-        self.output_hidden_state = output_hidden_state
-
-        if rnn_type == 'lstm':
-            self.rnn = nn.LSTM(
-                    self.in_dim,
-                    hidden_size=h_units,
-                    num_layers=n_layers,
-                    bidirectional=False,
-            )
-        elif rnn_type == 'gru':
-            self.rnn = nn.GRU(
-                    self.in_dim,
-                    hidden_size=h_units,
-                    num_layers=n_layers,
-                    bidirectional=False,
-            )
-
-        self.dropout = nn.Dropout(p=0.5)
-        self.h_size = (n_layers * 1, 1, h_units)
-
-    def forward(self, x, h=None, c=None):
-        # x: (L, B, D)
-        if h is None:
-            ret,_ = self.rnn(x)
-            ret = self.dropout(ret)
-            h = None
-        else:
-            ret, (h, c) = self.rnn(x, (h, c))
-        
-        if self.output_hidden_state:
-            return ret, (h, c)
-        else:
-            return ret
-
-
-class ConvRNN(AbsESPnetModel):
+class ConvRNNPosemb(AbsESPnetModel):
     def __init__(
         self,
         in_dim=128, kernel_size=3, n_convs=2, conv_type='glu',
@@ -153,6 +62,11 @@ class ConvRNN(AbsESPnetModel):
         # loss
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)
 
+        # positional encoding
+        self.pos_emb = PositionalEncoding(
+            in_dim * kernel_size ** n_convs,
+            dropout_rate=0.1
+        )
 
     def forward(
         self,
@@ -179,6 +93,7 @@ class ConvRNN(AbsESPnetModel):
         feats = self.linear(feats)
         padded = self.padding(feats) # (B, D, T+padding)
         x = self.conv(padded).transpose(1, 2) # (B, L, D)
+        x = self.pos_emb(x)
         x = self.rnn(x.transpose(0, 1)).transpose(0, 1) # (L, B, D)
         x = self.out_linear(x) # (B, L, vocab_size)
         ce_loss = self.loss(x.transpose(1, 2), text[:, :x.size(1)])

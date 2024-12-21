@@ -11,7 +11,7 @@ dev_dataset:
 
 # Model
 model:
-  _target_: egs.streamingDSU.ConvRNN
+  _target_: egs.streamingDSU.ConvRNNPosemb
   kernel_size: 5
   n_convs: 2
   h_units: 1024

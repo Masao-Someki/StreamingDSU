@@ -14,6 +14,7 @@ model:
   _target_: egs.streamingDSU.ConvRNN
   kernel_size: 5
   n_convs: 2
+  n_layers: 2
   h_units: 1024
 
 # ESPnetEZ   related

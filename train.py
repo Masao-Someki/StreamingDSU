@@ -1,6 +1,8 @@
 import argparse
 from argparse import Namespace
 from pprint import pprint
+from datetime import datetime
+import os
 
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
@@ -10,13 +12,16 @@ import numpy as np
 
 import espnetez as ez
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 
 # parse command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a neural network for speech synthesis')
 
     # general arguments
-    parser.add_argument('--expdir', type=str, default='./results', help='Path to save the trained model')
     parser.add_argument('--train_config', type=str, required=True, help='Path to the model configuration file')
 
     args = parser.parse_args()
@@ -57,14 +62,24 @@ if __name__ == '__main__':
     config = Namespace(**OmegaConf.to_container(config))
     config.train['token_list'] = ["<unk>", "<s>", "</s>", "<pad>"]
     config.train['token_type'] = "char"
+    config.train['drop_last_iter'] = True
+    config.train['shuffle_within_batch'] = False
+
+    config_name = os.path.basename(args.train_config).split(".")[0]
+    current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
+    expdir = f"exp/{config_name}/{current_date}"
+    
+    default_config = ez.get_ez_task(config.task).get_default_config()
+    default_config.update(config.train)
+
     trainer = ez.Trainer(
         task=config.task,
-        train_config=config.train,
+        train_config=default_config,
         train_dataset=train_dataset,
         valid_dataset=dev_dataset,
         build_model_fn=build_model_fn,
         data_info=data_info,
-        output_dir=args.expdir,
+        output_dir=expdir,
         stats_dir="stats/",
         ngpu=1
     )

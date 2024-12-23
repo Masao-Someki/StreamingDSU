@@ -2,19 +2,18 @@
 train_dataset:
   _target_: egs.streamingDSU.ASRDataset
   split: train
-  num_proc: 2
+  num_proc: 4
 
 dev_dataset:
   _target_: egs.streamingDSU.ASRDataset
   split: dev
-  num_proc: 2
+  num_proc: 4
 
 # Model
 model:
-  _target_: egs.streamingDSU.ConvRNN
-  kernel_size: 3
-  n_convs: 2
-  h_units: 1024
+  _target_: egs.streamingDSU.FrozenSSLWithLinear
+  huggingface_model: wavlm_large
+  layer: 4
 
 # ESPnetEZ   related
 task: asr

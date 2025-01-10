@@ -1,7 +1,7 @@
 
 import joblib
 import torch
-
+import torch.nn as nn
 
 
 class ApplyKmeans(object):
@@ -23,3 +23,27 @@ class ApplyKmeans(object):
         )
         return dist.argmin(dim=1).cpu().numpy()
 
+
+class CentroidLoss(nn.Module):
+    def __init__(self, km_path, use_gpu):
+        super(CentroidLoss, self).__init__()
+        km = ApplyKmeans(km_path, use_gpu)
+        self.C = km.C
+    
+    def forward(self, centroids, units, unit_lengths):
+        # x is the output
+        B = unit_lengths.shape
+
+        loss = 0
+        for b in range(B):
+            unit_length = unit_lengths[b]
+            true_centroids = torch.index_select(
+                self.C, 0,
+                units[b][:unit_length]
+            ).reshape(1024, unit_length) # (1024, unit_length)
+            loss += torch.abs(
+                centroids[b][:unit_length].transpose(0, 1) - true_centroids
+            ).sum(dim=0).mean()
+        
+        loss /= B
+        return loss

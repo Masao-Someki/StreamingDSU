@@ -2,18 +2,19 @@
 train_dataset:
   _target_: egs.streamingDSU.ASRDataset
   split: train
-  num_proc: 4
+  num_proc: 2
 
 dev_dataset:
   _target_: egs.streamingDSU.ASRDataset
   split: dev
-  num_proc: 4
+  num_proc: 2
 
 # Model
 model:
-  _target_: egs.streamingDSU.FrozenSSLWithLinear
-  huggingface_model: wavlm_large
-  layer: 4
+  _target_: egs.streamingDSU.ConvRNN
+  kernel_size: 5
+  n_convs: 2
+  h_units: 1024
 
 # ESPnetEZ   related
 task: asr
@@ -25,12 +26,12 @@ train:
   num_workers: 4
   batch_type: numel
   batch_size: 16
-  batch_bins: 1000000
+  batch_bins: 2500000
   accum_grad: 1
   grad_clip: 1.0
   max_epoch: 20
   patience:
-  init: 
+  init: none
   best_model_criterion:
   -   - valid
       - acc

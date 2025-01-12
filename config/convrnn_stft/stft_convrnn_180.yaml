@@ -11,9 +11,10 @@ dev_dataset:
 
 # Model
 model:
-  _target_: egs.streamingDSU.FrozenSSLWithLinear
-  huggingface_model: wavlm_large
-  layer: 4
+  _target_: egs.streamingDSU.STFTConvRNN
+  kernel_size: 3
+  n_convs: 2
+  h_units: 1024
 
 # ESPnetEZ   related
 task: asr
@@ -25,7 +26,7 @@ train:
   num_workers: 4
   batch_type: numel
   batch_size: 16
-  batch_bins: 1000000
+  batch_bins: 3000000
   accum_grad: 1
   grad_clip: 1.0
   max_epoch: 20

@@ -11,9 +11,7 @@ dev_dataset:
 
 # Model
 model:
-  _target_: egs.streamingDSU.FrozenSSLWithLinear
-  huggingface_model: wavlm_large
-  layer: 4
+  _target_: egs.streamingDSU.SoundStreamRNNEncoder
 
 # ESPnetEZ   related
 task: asr
@@ -21,7 +19,7 @@ task: asr
 # ESPnet related
 train:
   seed: 2022
-  log_interval: 500
+  log_interval: 200
   num_workers: 4
   batch_type: numel
   batch_size: 16
@@ -44,5 +42,5 @@ train:
       weight_decay: 0.000001
   scheduler: steplr
   scheduler_conf:
-      step_size: 1000
+      step_size: 1
       gamma: 0.9

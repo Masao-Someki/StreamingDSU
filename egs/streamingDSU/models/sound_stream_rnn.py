@@ -5,7 +5,8 @@ from torch.nn.utils import weight_norm
 
 from espnet2.train.abs_espnet_model import AbsESPnetModel
 from espnet2.asr.frontend.default import DefaultFrontend
-from espnet2.layers.global_mvn import GlobalMVN
+
+from egs.streamingDSU.models.convrnn import RNN
 
 # Generator
 
@@ -59,16 +60,16 @@ class EncoderBlock(nn.Module):
         return self.layers(x)
 
 
-class SoundStreamEncoder(AbsESPnetModel):
-    def __init__(self, in_channels=80, C=128, out_channels=2000):
+class SoundStreamRNNEncoder(AbsESPnetModel):
+    def __init__(self, in_channels=80, C=128, out_channels=2000, rnn_type='gru',
+        h_units=2048, n_layers=1, output_hidden_state=False):
         super().__init__()
         self.frontend = DefaultFrontend(
-            n_fft=512,
+            n_fft=400,
             hop_length=320,
             center=False,
             n_mels=in_channels,
         )
-        self.normalize = GlobalMVN(stats_file="feats_stats.npz")
 
         self.layers = nn.Sequential(
             CausalConv1d(in_channels=in_channels, out_channels=C, kernel_size=7),
@@ -84,6 +85,8 @@ class SoundStreamEncoder(AbsESPnetModel):
             CausalConv1d(in_channels=16*C, out_channels=out_channels, kernel_size=3)
         )
         self.out_linear = nn.Linear(out_channels, out_channels)
+        self.rnn = RNN(out_channels, 1, 1,
+            rnn_type, h_units, n_layers, output_hidden_state)
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)
 
     def forward(
@@ -95,7 +98,6 @@ class SoundStreamEncoder(AbsESPnetModel):
         **kwargs,
     ):
         feats, feat_lengths = self.frontend(speech, speech_lengths) # (B, T, D)
-        feats, feat_lengths = self.normalize(feats, feat_lengths) # (B, T, D)
         x = self.layers(feats.transpose(1, 2)).transpose(1, 2) # (B, L, D)
         x = self.out_linear(x) # (B, L, vocab_size)
         ce_loss = self.loss(x.transpose(1, 2), text[:, :x.size(1)]) 

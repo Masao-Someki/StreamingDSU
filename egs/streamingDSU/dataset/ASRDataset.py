@@ -43,6 +43,7 @@ class ASRDataset(torch.utils.data.Dataset):
         assert audio["id"] == units["id"], "IDs do not match"
 
         return {
+            "id": audio["id"],
             "audio": audio["audio"]['array'].astype(np.float32),
             "units": units["units"],
         }

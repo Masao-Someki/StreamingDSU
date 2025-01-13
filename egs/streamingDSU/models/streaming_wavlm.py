@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from espnet2.train.abs_espnet_model import AbsESPnetModel
 from src.wavlm import WavLM, WavLMConfig
+from src.modules import Fp32GlobalLayerNorm
 
 
 class StreamingWavLM(AbsESPnetModel):
@@ -13,17 +14,21 @@ class StreamingWavLM(AbsESPnetModel):
         self,
         ckpt_path: str,
         vocab_size=2000,
+        n_future_frames=0,
+        n_past_frames=-1,
         **kwargs,
     ):
         super().__init__()
         checkpoint = torch.load(ckpt_path)
         self.cfg = WavLMConfig(checkpoint['cfg'])
-        self.cfg.extractor_mode = "no_noramalize"
-        self.model = WavLM(self.cfg)
+        self.cfg.mode = "default"
+        self.model = WavLM(self.cfg, n_future_frames, n_past_frames)
         self.model.load_state_dict(checkpoint['model'], strict=False)
 
         self.layer_weight = nn.Parameter(torch.ones(21), requires_grad=True)
         self.projector = nn.Linear(1024, vocab_size)
+        # self.layer_norm = Fp32GlobalLayerNorm(1)
+        self.layer_norm = F.layer_norm
 
         # loss
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)
@@ -41,7 +46,7 @@ class StreamingWavLM(AbsESPnetModel):
         text: (B, T_u)
         """
         if self.cfg.normalize:
-            speech = torch.nn.functional.layer_norm(speech , speech.shape)
+            speech = self.layer_norm(speech)
 
         rep, layer_results = self.model.extract_features(
             speech,
@@ -67,6 +72,36 @@ class StreamingWavLM(AbsESPnetModel):
         acc /= x.shape[0]
         
         return ce_loss, {"loss": ce_loss.item(), "acc": acc}, None
+
+    def inference(
+        self,
+        speech: torch.Tensor,
+        **kwargs,
+    ):
+        """
+        speech: (B, T_s)
+        text: (B, T_u)
+        """
+        if self.cfg.normalize:
+            speech = self.layer_norm(speech, speech.shape)
+
+        rep, layer_results = self.model.extract_features(
+            speech,
+            output_layer=[i for i in range(21)],
+            ret_layer_results=True
+        )[0]
+        layer_reps = [x.transpose(0, 1) for x, _ in layer_results]
+        norm_output_weights = F.softmax(self.layer_weight, dim=0)
+        weighted_output = [
+            output * weight
+            for output, weight in zip(layer_reps, norm_output_weights)
+        ]
+        weighted_output = torch.stack(weighted_output).sum(dim=0)
+        x = self.projector(weighted_output) # (B, T, vocab_size)
+
+        units = torch.argmax(x, dim=-1)[0]
+        
+        return units
 
     def collect_feats(
         self,

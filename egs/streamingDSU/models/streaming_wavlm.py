@@ -83,7 +83,7 @@ class StreamingWavLM(AbsESPnetModel):
         text: (B, T_u)
         """
         if self.cfg.normalize:
-            speech = self.layer_norm(speech, speech.shape)
+            speech = self.layer_norm(speech)
 
         rep, layer_results = self.model.extract_features(
             speech,
@@ -112,3 +112,4 @@ class StreamingWavLM(AbsESPnetModel):
         **kwargs,
     ):
         return {"feats": speech, "feats_lengths": speech_lengths}
+

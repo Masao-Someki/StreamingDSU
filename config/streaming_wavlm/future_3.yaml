@@ -13,7 +13,7 @@ dev_dataset:
 model:
   _target_: egs.streamingDSU.StreamingWavLM
   ckpt_path: download/WavLM-Large.pt
-  n_future_frames: 5
+  n_future_frames: 3
 
 # ESPnetEZ   related
 task: asr

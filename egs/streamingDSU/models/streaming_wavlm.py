@@ -27,8 +27,8 @@ class StreamingWavLM(AbsESPnetModel):
 
         self.layer_weight = nn.Parameter(torch.ones(21), requires_grad=True)
         self.projector = nn.Linear(1024, vocab_size)
-        # self.layer_norm = Fp32GlobalLayerNorm(1)
-        self.layer_norm = F.layer_norm
+        self.layer_norm = Fp32GlobalLayerNorm(1)
+        # self.layer_norm = F.layer_norm
 
         # loss
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)

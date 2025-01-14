@@ -32,16 +32,23 @@ class Fp32GlobalLayerNorm(nn.LayerNorm):
         super().__init__(*args, **kwargs)
         embed_dim = self.normalized_shape[0]
         self.mean = torch.zeros(embed_dim)
-        self.var = torch.ones(embed_dim)
+        self.var = torch.zeros(embed_dim)
         self.num_iter = 1
 
     def forward(self, input):
+        if self.mean.device!= input.device:
+            self.mean = self.mean.to(input.device)
+            self.var = self.var.to(input.device)
+
         if self.training:
             # compute mean and std
             self.mean = self.mean + (input.mean(dim=-1).mean(dim=0) - self.mean) / self.num_iter
-            self.var = self.var + ((input.var(dim=-1).mean(dim=0) - self.std) / self.num_iter)
+            self.var = self.var + ((input.var(dim=-1).mean(dim=0) - self.var) / self.num_iter)
 
             # normalize
+            input_affin = (input - self.mean.unsqueeze(0)) / torch.sqrt(self.var.unsqueeze(0) + self.eps)
+            output = input_affin * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
+        else:
             input_affin = (input - self.mean.unsqueeze(0)) / torch.sqrt(self.var.unsqueeze(0) + self.eps)
             output = input_affin * self.weight.unsqueeze(0) + self.bias.unsqueeze(0)
 
@@ -69,6 +76,7 @@ class Fp32LayerNorm(nn.LayerNorm):
             self.bias.float() if self.bias is not None else None,
             self.eps,
         )
+        return output
 
 
 class Fp32GroupNorm(nn.GroupNorm):

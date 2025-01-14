@@ -27,28 +27,35 @@ from .modules import (
     get_activation_fn,
     TransposeLast,
     GLU_Linear,
-
 )
 
 logger = logging.getLogger(__name__)
 
 
-def create_streaming_attention_mask(seq_len: int, device: str = "cpu"):
-    """
-    Create a streaming attention mask.
-    This mask ensures that each token can only attend to itself and previous tokens.
 
-    Args:
-        seq_len (int): The sequence length.
-        device (str): The device to place the mask on (default is "cpu").
+def create_streaming_attention_mask(seq_len, n_future_frames=0, n_past_frames=-1, device="cpu"):
+    # Create lower triangular matrix for the past frame mask
+    if n_past_frames >= 0:
+        past_mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.float32), diagonal=-1-n_past_frames).to(device)
+    else:
+        past_mask = None
+    # Create upper triangular matrix for the future frame mask
+    future_mask = torch.triu(torch.ones(seq_len, seq_len, dtype=torch.float32), diagonal=1+n_future_frames).to(device)
 
-    Returns:
-        torch.Tensor: A (seq_len, seq_len) attention mask.
-    """
-    # Create an upper triangular matrix with 1s above the diagonal
-    mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1)
-    # Invert the mask to make it suitable for masking in attention (0 for allowed positions, -inf for disallowed)
-    return mask
+    # Combine masks
+    if past_mask is not None:
+        combined_mask = past_mask + future_mask
+    else:
+        combined_mask = future_mask
+
+    # Normalize mask to 0 or 1
+    combined_mask[combined_mask > 0] = 1.0
+    
+    # Convert 1.0 to -inf and leave 0.0 as is
+    combined_mask[combined_mask == 1] = -float('inf')
+    
+    return combined_mask
+
 
 
 def compute_mask_indices(
@@ -180,7 +187,7 @@ def compute_mask_indices(
 
 class WavLMConfig:
     def __init__(self, cfg=None):
-        self.extractor_mode: str = "default"     # mode for feature extractor. default has a single group norm with d groups in the first conv block, whereas layer_norm has layer norms in every block (meant to use with normalize=True)
+        self.extractor_mode: str = "layer_norm"     # mode for feature extractor. default has a single group norm with d groups in the first conv block, whereas layer_norm has layer norms in every block (meant to use with normalize=True)
         self.encoder_layers: int = 12     # num encoder layers in the transformer
 
         self.encoder_embed_dim: int = 768     # encoder embedding dimension
@@ -240,6 +247,8 @@ class WavLM(nn.Module):
     def __init__(
         self,
         cfg: WavLMConfig,
+        n_future_frames: int = 0,
+        n_past_frames: int = -1,
     ) -> None:
         super().__init__()
         logger.info(f"WavLM Config: {cfg.__dict__}")
@@ -286,6 +295,8 @@ class WavLM(nn.Module):
 
         self.encoder = TransformerEncoder(cfg)
         self.layer_norm = Fp32LayerNorm(self.embed)
+        self.n_future_frames = n_future_frames
+        self.n_past_frames = n_past_frames
 
     def apply_mask(self, x, padding_mask):
         B, T, C = x.shape
@@ -380,7 +391,12 @@ class WavLM(nn.Module):
         # x: (B, T, D), float
         # padding_mask: (B, T), bool
         # mask_indices: (B, T), bool
-        streaming_mask = create_streaming_attention_mask(seq_len=x.size(1), device=x.device)
+        streaming_mask = create_streaming_attention_mask(
+            seq_len=x.size(1),
+            n_future_frames=self.n_future_frames,
+            n_past_frames=self.n_past_frames,
+            device=x.device
+        )
         x, layer_results = self.encoder(
             x,
             padding_mask=padding_mask,

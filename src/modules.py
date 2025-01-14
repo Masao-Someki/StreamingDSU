@@ -31,9 +31,11 @@ class Fp32GlobalLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         embed_dim = self.normalized_shape[0]
-        self.mean = torch.zeros(embed_dim)
-        self.var = torch.zeros(embed_dim)
+        mean = torch.zeros(embed_dim)
+        var = torch.zeros(embed_dim)
         self.num_iter = 1
+        self.register_buffer('mean', mean)
+        self.register_buffer('var', var)
 
     def forward(self, input):
         if self.mean.device!= input.device:
@@ -57,11 +59,16 @@ class Fp32GlobalLayerNorm(nn.LayerNorm):
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         my_state_dict = super().state_dict(destination, prefix, keep_vars)
         ret_state_dict = {
-            prefix + '.mean': self.mean,
-            prefix + '.var': self.var,
+            prefix + 'mean': self.mean,
+            prefix + 'var': self.var,
         } # your logic here
         my_state_dict.update(ret_state_dict)
         return my_state_dict
+    
+    def load_state_dict(self, state_dict, strict=True):
+        self.mean.data = state_dict["mean"]
+        self.var.data = state_dict["var"]
+        return super().load_state_dict(state_dict, strict=False)
 
 
 class Fp32LayerNorm(nn.LayerNorm):

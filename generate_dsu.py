@@ -17,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a neural network for speech synthesis')
 
     # general arguments
-    parser.add_argument('--split', type=str, default='./results', help='Path to save the trained model')
+    parser.add_argument('--split', type=str, default='test_clean', help='Path to save the trained model')
     parser.add_argument('--ckpt', type=str, default='', help='Path to the checkpoint')
     parser.add_argument('--config', type=str, required=True, help='Path to the model configuration file')
 
@@ -54,7 +54,8 @@ if __name__ == '__main__':
 
         id2units[data['id']] = units.cpu().detach().tolist()
 
-    with open(f"{args.split}_units_convrnn.txt", "w") as f:
+    config_name = args.config.split("/")[-1].split(".")[0]
+    with open(f"{args.split}_units_{config_name}.txt", "w") as f:
         for aid, units in id2units.items():
             f.write(f"{aid}\t{' '.join(map(str, units))}\n")
         

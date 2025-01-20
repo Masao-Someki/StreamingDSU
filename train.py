@@ -19,10 +19,10 @@ logging.basicConfig(level=logging.INFO)
 
 # parse command-line arguments
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train a neural network for speech synthesis')
+    parser = argparse.ArgumentParser(description="Train a neural network predicting discrete units")
 
     # general arguments
-    parser.add_argument('--train_config', type=str, required=True, help='Path to the model configuration file')
+    parser.add_argument('--train_config', type=str, required=True, help="Path to the model configuration file")
 
     args = parser.parse_args()
     return args
@@ -83,6 +83,6 @@ if __name__ == '__main__':
         stats_dir="stats/",
         ngpu=1
     )
-    # trainer.collect_stats()
+    trainer.collect_stats()
     trainer.train()
 

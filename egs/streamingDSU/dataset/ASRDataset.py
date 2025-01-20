@@ -46,4 +46,5 @@ class ASRDataset(torch.utils.data.Dataset):
             "id": audio["id"],
             "audio": audio["audio"]['array'].astype(np.float32),
             "units": units["units"],
+            "text": audio["text"],
         }

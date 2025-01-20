@@ -22,8 +22,19 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train a neural network predicting discrete units")
 
     # general arguments
-    parser.add_argument('--train_config', type=str, required=True, help="Path to the model configuration file")
+    parser.add_argument(
+        "--train_config",
+        type=str,
+        required=True,
+        help="Path to the model configuration file (examples in config/)"
+    )
 
+    parser.add_argument(
+        "--skip_collect_stats",
+        action="store_true",
+        default=False,
+        help="Skip collecting dataset statistics (default: False)"
+    )
     args = parser.parse_args()
     return args
 
@@ -68,7 +79,7 @@ if __name__ == '__main__':
     config_name = os.path.basename(args.train_config).split(".")[0]
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
     expdir = f"exp/{config_name}/{current_date}"
-    
+
     default_config = ez.get_ez_task(config.task).get_default_config()
     default_config.update(config.train)
 
@@ -83,6 +94,7 @@ if __name__ == '__main__':
         stats_dir="stats/",
         ngpu=1
     )
-    trainer.collect_stats()
+    if not args.skip_collect_stats:
+        trainer.collect_stats()
     trainer.train()
 

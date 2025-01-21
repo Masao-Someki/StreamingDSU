@@ -1,0 +1,12 @@
+onnxruntime
+onnx
+datasets
+tensorboard
+ptflops
+codecarbon
+editdistance
+parallel_wavegan # For TTS Baseline
+scipy==1.12 # For TTS Baseline
+jiwer
+sacrebleu
+openai-whisper==20230308

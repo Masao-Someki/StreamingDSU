@@ -11,7 +11,7 @@ dev_dataset:
 
 # Model
 model:
-  _target_: egs.streamingDSU.FrozenSSLWithLinear
+  _target_: egs.streamingDSU.TrainableSSLWithLinear
   huggingface_model: wavlm_large
   layer: 9
 

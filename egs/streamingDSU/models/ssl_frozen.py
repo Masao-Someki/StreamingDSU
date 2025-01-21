@@ -77,3 +77,16 @@ class FrozenSSLWithLinear(AbsESPnetModel):
         **kwargs,
     ):
         return {"feats": speech, "feats_lengths": speech_lengths}
+
+    def inference(
+        self,
+        speech: torch.Tensor,
+        **kwargs,
+    ):
+        assert len(speech) == 1
+        speech_lengths = torch.LongTensor([len(speech[0])]).to(speech.device)
+        with torch.no_grad():
+            feats, feats_lens = self.model(speech, speech_lengths) # (B, T, D)
+
+        units = self.clustering_head(feats) # (B, T, Cluster)
+        return units.argmax(dim=-1)[0]

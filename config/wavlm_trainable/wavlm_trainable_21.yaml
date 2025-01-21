@@ -28,14 +28,14 @@ train:
   batch_bins: 3000000
   accum_grad: 1
   grad_clip: 1.0
-  max_epoch: 20
+  max_epoch: 5
   patience:
   init: 
   best_model_criterion:
   -   - valid
       - acc
       - max
-  keep_nbest_models: 3
+  keep_nbest_models: 1
   use_amp: false
 
   optim: adamw

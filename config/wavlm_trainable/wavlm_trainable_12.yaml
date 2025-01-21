@@ -13,7 +13,7 @@ dev_dataset:
 model:
   _target_: egs.streamingDSU.FrozenSSLWithLinear
   huggingface_model: wavlm_large
-  layer: 7
+  layer: 12
 
 # ESPnetEZ   related
 task: asr
@@ -24,18 +24,17 @@ train:
   log_interval: 500
   num_workers: 4
   batch_type: numel
-  batch_size: 16
   batch_bins: 3000000
   accum_grad: 1
   grad_clip: 1.0
-  max_epoch: 20
+  max_epoch: 5
   patience:
   init: 
   best_model_criterion:
   -   - valid
       - acc
       - max
-  keep_nbest_models: 3
+  keep_nbest_models: 1
   use_amp: false
 
   optim: adamw

@@ -16,21 +16,24 @@ class StreamingWavLM(AbsESPnetModel):
         vocab_size=2000,
         n_future_frames=0,
         n_past_frames=-1,
+        weighted_features=False,
+        layer=21,
         **kwargs,
     ):
         super().__init__()
+        self.layer = layer
+        self.weighted_features = weighted_features
+
         checkpoint = torch.load(ckpt_path)
         self.cfg = WavLMConfig(checkpoint['cfg'])
         self.cfg.mode = "default"
         self.model = WavLM(self.cfg, n_future_frames, n_past_frames)
         self.model.load_state_dict(checkpoint['model'], strict=False)
 
-        self.layer_weight = nn.Parameter(torch.ones(21), requires_grad=True)
+        self.layer_weight = nn.Parameter(torch.ones(layer + 1), requires_grad=True)
         self.projector = nn.Linear(1024, vocab_size)
         self.layer_norm = Fp32GlobalLayerNorm(1)
-        # self.layer_norm = F.layer_norm
 
-        # loss
         self.loss = nn.CrossEntropyLoss(ignore_index=-1)
 
     def forward(
@@ -48,19 +51,21 @@ class StreamingWavLM(AbsESPnetModel):
         if self.cfg.normalize:
             speech = self.layer_norm(speech)
 
-        rep, layer_results = self.model.extract_features(
+        features, _, layer_results = self.model.extract_features(
             speech,
-            output_layer=[i for i in range(21)],
+            output_layer=self.layer - 1,
             ret_layer_results=True
-        )[0]
-        layer_reps = [x.transpose(0, 1) for x, _ in layer_results]
-        norm_output_weights = F.softmax(self.layer_weight, dim=0)
-        weighted_output = [
-            output * weight
-            for output, weight in zip(layer_reps, norm_output_weights)
-        ]
-        weighted_output = torch.stack(weighted_output).sum(dim=0)
-        x = self.projector(weighted_output) # (B, T, vocab_size)
+        )
+        if self.weighted_features:
+            layer_reps = [x.transpose(0, 1) for x, _ in layer_results]
+            norm_output_weights = F.softmax(self.layer_weight, dim=0)
+            features = [
+                output * weight
+                for output, weight in zip(layer_reps, norm_output_weights)
+            ]
+            features = torch.stack(features).sum(dim=0)
+
+        x = self.projector(features) # (B, T, vocab_size)
 
         ce_loss = self.loss(x.transpose(1, 2), text[:, :x.size(1)])
 
@@ -85,19 +90,21 @@ class StreamingWavLM(AbsESPnetModel):
         if self.cfg.normalize:
             speech = self.layer_norm(speech)
 
-        rep, layer_results = self.model.extract_features(
+        features, _, layer_results = self.model.extract_features(
             speech,
-            output_layer=[i for i in range(21)],
+            output_layer=self.layer - 1,
             ret_layer_results=True
-        )[0]
-        layer_reps = [x.transpose(0, 1) for x, _ in layer_results]
-        norm_output_weights = F.softmax(self.layer_weight, dim=0)
-        weighted_output = [
-            output * weight
-            for output, weight in zip(layer_reps, norm_output_weights)
-        ]
-        weighted_output = torch.stack(weighted_output).sum(dim=0)
-        x = self.projector(weighted_output) # (B, T, vocab_size)
+        )
+        if self.weighted_features:
+            layer_reps = [x.transpose(0, 1) for x, _ in layer_results]
+            norm_output_weights = F.softmax(self.layer_weight, dim=0)
+            features = [
+                output * weight
+                for output, weight in zip(layer_reps, norm_output_weights)
+            ]
+            features = torch.stack(features).sum(dim=0)
+
+        x = self.projector(features) # (B, T, vocab_size)
 
         units = torch.argmax(x, dim=-1)[0]
         

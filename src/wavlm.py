@@ -401,15 +401,14 @@ class WavLM(nn.Module):
             x,
             padding_mask=padding_mask,
             streaming_mask=streaming_mask,
-            layer=None if output_layer is None else output_layer
+            layer=output_layer
         )
 
-        res = {"x": x, "padding_mask": padding_mask, "features": features, "layer_results": layer_results}
-
-        feature = res["features"] if ret_conv else res["x"]
+        features = features if ret_conv else x
         if ret_layer_results:
-            feature = (feature, res["layer_results"])
-        return feature, res["padding_mask"]
+            return features, padding_mask, layer_results
+        else:
+            return features, padding_mask
 
 
 class ConvFeatureExtractionModel(nn.Module):

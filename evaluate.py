@@ -33,6 +33,7 @@ def parse_args():
     parser.add_argument('--config', type=str, required=True, help='Path to the model configuration file')
     parser.add_argument('--ckpt', type=str, required=True, help='Path to the checkpoint model.')
     parser.add_argument('--output_dir', type=str, default="output", help='Path to the output directory')
+    parser.add_argument('--dataset_split', type=str, choices=("test_clean", "test_other", "test_1h"))
     args = parser.parse_args()
     return args
 
@@ -47,7 +48,7 @@ if __name__ == '__main__':
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     dataset = ASRDataset(
-        split="test_clean",
+        split=args.dataset_split,
         num_proc=4,
     )
     mt_model = Text2Text(
@@ -69,13 +70,13 @@ if __name__ == '__main__':
 
     tokenizer = build_tokenizer(
         token_type="bpe",
-        bpemodel="download/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model",
+        bpemodel="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model",
     )
-    converter = TokenIDConverter(token_list="download/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt")
+    converter = TokenIDConverter(token_list="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt")
 
     # Steo 2. Setup directories
     # eval_dir = f"{args.expdir}/eval_results/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
-    eval_dir = f"eval_results/{args.output_dir}/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+    eval_dir = f"{args.output_dir}/eval_results/{args.dataset_split}/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
     if not os.path.exists(eval_dir):
         os.makedirs(eval_dir)
     

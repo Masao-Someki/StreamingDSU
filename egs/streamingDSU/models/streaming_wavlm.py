@@ -70,7 +70,7 @@ class StreamingWavLM(AbsESPnetModel):
             selected_cls = torch.argmax(x[b][:x.size(1)], dim=-1)
             acc += torch.sum(selected_cls == text[b][:x.size(1)]) / text_length
         acc /= x.shape[0]
-        
+
         return ce_loss, {"loss": ce_loss.item(), "acc": acc}, None
 
     def inference(

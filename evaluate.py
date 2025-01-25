@@ -27,13 +27,14 @@ def get_time(date_fmt: str) -> str:
 
 # parse command-line arguments
 def parse_args():
-    parser = argparse.ArgumentParser(description='Train a neural network for speech synthesis')
+    parser = argparse.ArgumentParser(description="Run inference of unit-to-text model")
 
     # general arguments
-    parser.add_argument('--config', type=str, required=True, help='Path to the model configuration file')
-    parser.add_argument('--ckpt', type=str, required=True, help='Path to the checkpoint model.')
-    parser.add_argument('--output_dir', type=str, default="output", help='Path to the output directory')
+    parser.add_argument('--config', type=str, required=True, help="Path to the model configuration file")
+    parser.add_argument('--ckpt', type=str, required=True, help="Path to the checkpoint model.")
+    parser.add_argument('--output_dir', type=str, default="output", help="Path to the output directory")
     parser.add_argument('--dataset_split', type=str, choices=("test_clean", "test_other", "test_1h"))
+    parser.add_argument('--beam_size', type=int, default=5, help="Beam size for inference")
     args = parser.parse_args()
     return args
 
@@ -54,7 +55,7 @@ if __name__ == '__main__':
     mt_model = Text2Text(
         mt_train_config="exp/wavlm_baseline/config.yaml",
         mt_model_file="exp/wavlm_baseline/valid.acc.ave_10best.pth",
-        beam_size=5,
+        beam_size=args.beam_size,
         ctc_weight=0.0,
         lm_weight=0.0,
         device=device

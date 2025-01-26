@@ -62,11 +62,12 @@ if __name__ == '__main__':
     )
 
     unit_model = instantiate(config.model)
-    d = torch.load(args.ckpt)
-    if 'layer_norm..mean' in d:
-        d['layer_norm.mean'] = d.pop('layer_norm..mean')
-        d['layer_norm.var'] = d.pop('layer_norm..var')
-    unit_model.load_state_dict(d)
+    if args.ckpt:
+        d = torch.load(args.ckpt)
+        if 'layer_norm..mean' in d:
+            d['layer_norm.mean'] = d.pop('layer_norm..mean')
+            d['layer_norm.var'] = d.pop('layer_norm..var')
+        unit_model.load_state_dict(d)
     unit_model.to(device)
 
     tokenizer = build_tokenizer(

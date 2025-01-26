@@ -1,0 +1,48 @@
+# Dataset
+train_dataset:
+  _target_: egs.streamingDSU.ASRDataset
+  split: train
+  num_proc: 4
+
+dev_dataset:
+  _target_: egs.streamingDSU.ASRDataset
+  split: dev
+  num_proc: 4
+
+# Model
+model:
+  _target_: egs.streamingDSU.FrozenSSLWithKmeans
+  huggingface_model: wavlm_large
+  kmeans_model: /home/kwanghec/StreamingDSU/exp/wavlm_baseline/km_2000.mdl
+  layer: 21
+
+# ESPnetEZ   related
+task: asr
+
+# ESPnet related
+train:
+  seed: 2022
+  log_interval: 500
+  num_workers: 4
+  batch_type: numel
+  batch_bins: 2000000
+  accum_grad: 1
+  grad_clip: 1.0
+  max_epoch: 5
+  patience:
+  init: 
+  best_model_criterion:
+  -   - valid
+      - acc
+      - max
+  keep_nbest_models: 1
+  use_amp: false
+
+  optim: adamw
+  optim_conf:
+      lr: 0.0001
+      weight_decay: 0.000001
+  scheduler: steplr
+  scheduler_conf:
+      step_size: 1000
+      gamma: 0.9

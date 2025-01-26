@@ -29,8 +29,8 @@ train:
   batch_bins: 2000000
   accum_grad: 1
   grad_clip: 1.0
-  max_epoch: 5
-  patience:
+  max_epoch: 10
+  patience: 1
   init: 
   best_model_criterion:
   -   - valid

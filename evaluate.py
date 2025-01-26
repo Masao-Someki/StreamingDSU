@@ -90,11 +90,7 @@ if __name__ == '__main__':
     gts = []
     hyps = []
     ids = []
-    i = 0
     for data in tqdm(dataset):
-        i += 1
-        if i > 500:
-            break
         audio = torch.from_numpy(data['audio']).to(device)
 
         # Forward pass

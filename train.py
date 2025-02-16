@@ -47,9 +47,13 @@ if __name__ == '__main__':
     pprint(config)
 
     # Step 1. Setup dataset
+    # data_info = {
+    #     "speech": lambda x: x['audio'],
+    #     "text": lambda x: np.array(x["units"]),
+    # }
     data_info = {
-        "speech": lambda x: x['audio'],
-        "text": lambda x: np.array(x["units"]),
+        "speech": lambda x: x['units'],
+        "text": lambda x: np.array(x["text"]),
     }
     train_dataset = ez.dataset.ESPnetEZDataset(
         instantiate(config.train_dataset),
@@ -78,7 +82,7 @@ if __name__ == '__main__':
 
     config_name = os.path.basename(args.train_config).split(".")[0]
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-    expdir = f"exp/{config_name}/{current_date}"
+    expdir = f"exp/{config_name}_{os.environ['LAYER']}_{os.environ['FRAME']}/{current_date}"
 
     default_config = ez.get_ez_task(config.task).get_default_config()
     default_config.update(config.train)

@@ -60,6 +60,7 @@ if __name__ == '__main__':
         num_proc=4,
         unit_path=f"{args.unit_dir}/{args.split}/units",
     )
+
     mt_model = Text2Text(
         mt_train_config=args.mt_config,
         mt_model_file=args.mt_model,
@@ -68,13 +69,12 @@ if __name__ == '__main__':
         lm_weight=0.0,
         device=device
     )
-    d = torch.load(args.mt_model)
-    
-    tokenizer = build_tokenizer(
-        token_type="bpe",
-        bpemodel="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model",
-    )
-    converter = TokenIDConverter(token_list="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt")
+
+    tokenizer = dataset.tokenizers["src"]
+    converter = dataset.converters["src"]
+
+    tgt_tokenizer = dataset.tokenizers["tgt"]
+    tgt_converter = dataset.converters["tgt"]
 
     # Steo 2. Setup directories
     # eval_dir = f"{args.expdir}/eval_results/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
@@ -91,18 +91,11 @@ if __name__ == '__main__':
     hyps = []
     ids = []
     for data in tqdm(dataset):
-        units = data['units']
+        units = data["units"]
+        results = mt_model(units)
+        text = tgt_tokenizer.tokens2text(tgt_converter.ids2tokens(data["text"]))
 
-        deduplicated_units = [x[0] for x in groupby(units)]
-        cjk_units = "".join([chr(int("4e00", 16) + c) for c in deduplicated_units])
-        bpe_tokens = tokenizer.text2tokens(cjk_units)
-        bpe_tokens = converter.tokens2ids(bpe_tokens)
-        bpe_tokens = torch.LongTensor(bpe_tokens).to("cuda")
-
-        results = mt_model(bpe_tokens)
-        text = tokenizer.tokens2text(converter.ids2tokens(data['text']))
-
-        ids.append(data['id'])
+        ids.append(data["id"])
         gts.append(text)
         hyps.append(results[0][0])
 

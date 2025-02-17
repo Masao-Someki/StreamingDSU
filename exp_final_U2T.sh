@@ -25,11 +25,12 @@ echo "START TRAIN $(date '+%Y-%m-%d %H:%M:%S')"
 config=config/final_orig_bpe/unit2text_final.yaml
 HF_HUB_CACHE=/u/someki1/workspace/hub \
     python train.py \
-       --train_config $config \
-       --skip_collect_stats
+        --train_u2t \
+        --train_config $config \
+        --skip_collect_stats
 
 echo "START EVALUATE $(date '+%Y-%m-%d %H:%M:%S')"
-model_dir=$(find exp/unit2text_final_$layer_$frame/ -type f -name "checkpoint.pth" | head -n 1)
+model_dir=$(find exp/unit2text_final_$layer\_$frame/ -type f -name "checkpoint.pth" | head -n 1)
 model_dir=$(dirname "$model_dir")
 
 audio2unit_dir=$(find exp/wavlm_weighted_trainable_$layer/ -type f -name "checkpoint.pth" | head -n 1)
@@ -40,7 +41,8 @@ for split in test_clean test_other test_1h; do
         python evaluate_unit2text.py \
         --config $config \
         --output_dir $model_dir \
-        --dataset_split $split \
+        --unit_dir download/dump/l$layer\_$frame\_$frame \
+        --split $split \
         --mt_config $model_dir/config.yaml \
         --mt_model $model_dir/valid.acc.best.pth
 done

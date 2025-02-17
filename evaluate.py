@@ -63,8 +63,6 @@ if __name__ == '__main__':
         lm_weight=0.0,
         device=device
     )
-    d = torch.load(args.mt_model)
-    
 
     unit_model = instantiate(config.model)
     if args.ckpt:

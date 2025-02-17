@@ -27,7 +27,7 @@ class ASRDataset(torch.utils.data.Dataset):
         # For ASR we use the following two datasets:
         self.audio_data = datasets.load_dataset(
             "espnet/DSUChallenge2024"
-        )[split]
+        )[split].remove_columns(["audio"])
         self.keys = self.audio_data["id"]
 
         with open(unit_path, "r") as f:

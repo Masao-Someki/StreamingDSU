@@ -13,7 +13,7 @@ import torch
 import numpy as np
 
 from espnet2.bin.mt_inference import Text2Text
-from egs.streamingDSU import ASRDataset
+from egs.finetuneUnit2Text import ASRDataset
 from src.metrics import CER, WER
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.text.token_id_converter import TokenIDConverter
@@ -31,9 +31,9 @@ def parse_args():
 
     # general arguments
     parser.add_argument('--config', type=str, required=True, help="Path to the model configuration file")
-    parser.add_argument('--ckpt', type=str, required=True, help="Path to the checkpoint model.")
     parser.add_argument('--output_dir', type=str, default="output", help="Path to the output directory")
-    parser.add_argument('--dataset_split', type=str, choices=("test_clean", "test_other", "test_1h"))
+    parser.add_argument('--unit_dir', type=str)
+    parser.add_argument('--split', type=str, default="test_clean")
     parser.add_argument('--beam_size', type=int, default=5, help="Beam size for inference")
     parser.add_argument('--mt_config', type=str, default="exp/wavlm_baseline/config.yaml", help="Path to the MT model configuration file")
     parser.add_argument('--mt_model', type=str, default="exp/wavlm_baseline/valid.acc.ave_10best.pth", help="Path to the MT model checkpoint")
@@ -52,36 +52,33 @@ if __name__ == '__main__':
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     dataset = ASRDataset(
-        split=args.dataset_split,
+        split=args.split,
+        src_bpe_path=config.dev_dataset.src_bpe_path,
+        src_token_list_path=config.dev_dataset.src_token_list_path,
+        tgt_bpe_path=config.dev_dataset.tgt_bpe_path,
+        tgt_token_list_path=config.dev_dataset.tgt_token_list_path,
         num_proc=4,
+        unit_path=f"{args.unit_dir}/{args.split}/units",
     )
+
     mt_model = Text2Text(
-        mt_train_config="exp/wavlm_baseline/config.yaml",
-        mt_model_file="exp/wavlm_baseline/valid.acc.ave_10best.pth",
+        mt_train_config=args.mt_config,
+        mt_model_file=args.mt_model,
         beam_size=args.beam_size,
         ctc_weight=0.0,
         lm_weight=0.0,
         device=device
     )
 
-    unit_model = instantiate(config.model)
-    if args.ckpt:
-        d = torch.load(args.ckpt)
-        if 'layer_norm..mean' in d:
-            d['layer_norm.mean'] = d.pop('layer_norm..mean')
-            d['layer_norm.var'] = d.pop('layer_norm..var')
-        unit_model.load_state_dict(d)
-    unit_model.to(device)
+    tokenizer = dataset.tokenizers["src"]
+    converter = dataset.converters["src"]
 
-    tokenizer = build_tokenizer(
-        token_type="bpe",
-        bpemodel="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model",
-    )
-    converter = TokenIDConverter(token_list="ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt")
+    tgt_tokenizer = dataset.tokenizers["tgt"]
+    tgt_converter = dataset.converters["tgt"]
 
     # Steo 2. Setup directories
     # eval_dir = f"{args.expdir}/eval_results/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
-    eval_dir = f"{args.output_dir}/eval_results/{args.dataset_split}/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+    eval_dir = f"{args.output_dir}/eval_results/{args.split}/{dt.datetime.now().strftime('%Y-%m-%d-%H-%M')}"
     if not os.path.exists(eval_dir):
         os.makedirs(eval_dir)
     
@@ -94,22 +91,12 @@ if __name__ == '__main__':
     hyps = []
     ids = []
     for data in tqdm(dataset):
-        audio = torch.from_numpy(data['audio']).to(device)
+        units = data["units"]
+        results = mt_model(units)
+        text = tgt_tokenizer.tokens2text(tgt_converter.ids2tokens(data["text"]))
 
-        # Forward pass
-        with torch.no_grad():
-            units = unit_model.inference(audio[None]).cpu().detach().numpy()
-
-        deduplicated_units = [x[0] for x in groupby(units)]
-        cjk_units = "".join([chr(int("4e00", 16) + c) for c in deduplicated_units])
-        bpe_tokens = tokenizer.text2tokens(cjk_units)
-        bpe_tokens = converter.tokens2ids(bpe_tokens)
-        bpe_tokens = torch.LongTensor(bpe_tokens).to("cuda")
-
-        results = mt_model(bpe_tokens)
-
-        ids.append(data['id'])
-        gts.append(data['text'])
+        ids.append(data["id"])
+        gts.append(text)
         hyps.append(results[0][0])
 
     with open(os.path.join(eval_dir, "hyp.txt"), "w") as f:

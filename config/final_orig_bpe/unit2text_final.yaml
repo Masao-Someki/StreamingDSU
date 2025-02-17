@@ -1,0 +1,58 @@
+# Dataset
+train_dataset:
+  _target_: egs.finetuneUnit2Text.ASRDataset
+  split: train
+  num_proc: 4
+  src_bpe_path: ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model
+  src_token_list_path: ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt
+  tgt_bpe_path: ondevice_demo/baseline/data/token_list/tgt_bpe_unigram6500_ts_en/bpe.model
+  tgt_token_list_path: ondevice_demo/baseline/data/token_list/tgt_bpe_unigram6500_ts_en/tokens.txt
+  unit_path: download/dump/l${oc.env:LAYER}_${oc.env:FRAME}_${oc.env:FRAME}/train/units
+
+dev_dataset:
+  _target_: egs.finetuneUnit2Text.ASRDataset
+  split: dev
+  num_proc: 4
+  src_bpe_path: ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/bpe.model
+  src_token_list_path: ondevice_demo/baseline/data/token_list/src_bpe_unigram3000_rm_wavlm_large_21_km2000/tokens.txt
+  tgt_bpe_path: ondevice_demo/baseline/data/token_list/tgt_bpe_unigram6500_ts_en/bpe.model
+  tgt_token_list_path: ondevice_demo/baseline/data/token_list/tgt_bpe_unigram6500_ts_en/tokens.txt
+  unit_path: download/dump/l${oc.env:LAYER}_${oc.env:FRAME}_${oc.env:FRAME}/dev/units
+
+# Model
+model:
+  _target_: egs.finetuneUnit2Text.MTModel
+  ckpt_config: ondevice_demo/baseline/exp/wavlm_baseline/config.yaml
+  ckpt_path: ondevice_demo/baseline/exp/wavlm_baseline/valid.acc.ave_10best.pth
+
+# ESPnetEZ   related
+task: asr
+
+# ESPnet related
+train:
+  seed: 2022
+  num_att_plot: 1
+  log_interval: 1000
+  num_workers: 4
+  batch_type: numel
+  batch_bins: 12000
+  batch_size: 4
+  accum_grad: 1
+  max_epoch: 100
+  patience: 3
+  init: 
+  best_model_criterion:
+  -   - valid
+      - acc
+      - max
+  keep_nbest_models: 1
+  use_amp: true
+
+  optim: adam
+  optim_conf:
+      lr: 0.0005
+      weight_decay: 0.000001
+  scheduler: warmuplr
+  scheduler_conf:
+      warmup_steps: 5000
+

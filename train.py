@@ -35,6 +35,14 @@ def parse_args():
         default=False,
         help="Skip collecting dataset statistics (default: False)"
     )
+
+    parser.add_argument(
+        "--train_u2t",
+        action="store_true",
+        default=False,
+        help="Train unit-to-text model (default: False)",
+    )
+
     args = parser.parse_args()
     return args
 
@@ -47,10 +55,17 @@ if __name__ == '__main__':
     pprint(config)
 
     # Step 1. Setup dataset
-    data_info = {
-        "speech": lambda x: x['audio'],
-        "text": lambda x: np.array(x["units"]),
-    }
+    if args.train_u2t:
+        data_info = {
+            "speech": lambda x: x["units"],
+            "text": lambda x: np.array(x["text"]),
+        }
+    else:
+        data_info = {
+            "speech": lambda x: x["audio"],
+            "text": lambda x: np.array(x["units"]),
+        }
+
     train_dataset = ez.dataset.ESPnetEZDataset(
         instantiate(config.train_dataset),
         data_info=data_info
@@ -78,7 +93,7 @@ if __name__ == '__main__':
 
     config_name = os.path.basename(args.train_config).split(".")[0]
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-    expdir = f"exp/{config_name}/{current_date}"
+    expdir = f"exp/{config_name}_{os.environ['LAYER']}_{os.environ['FRAME']}/{current_date}"
 
     default_config = ez.get_ez_task(config.task).get_default_config()
     default_config.update(config.train)

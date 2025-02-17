@@ -100,7 +100,10 @@ if __name__ == '__main__':
 
     config_name = os.path.basename(args.train_config).split(".")[0]
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
-    expdir = f"exp/{config_name}_{os.environ['LAYER']}_{os.environ['FRAME']}/{current_date}"
+    if args.train_u2t:
+        expdir = f"exp/{config_name}_{os.environ['LAYER']}_{os.environ['FRAME']}/{current_date}"
+    else:
+        expdir = f"exp/{config_name}/{current_date}"
 
     default_config = ez.get_ez_task(config.task).get_default_config()
     default_config.update(config.train)

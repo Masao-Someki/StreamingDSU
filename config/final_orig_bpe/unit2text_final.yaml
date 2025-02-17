@@ -24,20 +24,21 @@ model:
   _target_: egs.finetuneUnit2Text.MTModel
   ckpt_config: ondevice_demo/baseline/exp/wavlm_baseline/config.yaml
   ckpt_path: ondevice_demo/baseline/exp/wavlm_baseline/valid.acc.ave_10best.pth
+  ctc_weight: 0.3
 
 # ESPnetEZ related
-task: mt
+task: asr
 
 # ESPnet related
 train:
   seed: 2022
-  num_att_plot: 1
-  log_interval: 1
+  log_interval: 500
   num_workers: 4
   batch_type: numel
-  batch_bins: 12000
+  batch_bins: 20000
   accum_grad: 1
-  max_epoch: 100
+  grad_clip: 1.0
+  max_epoch: 10
   patience: 1
   init: 
   best_model_criterion:
@@ -45,13 +46,13 @@ train:
       - acc
       - max
   keep_nbest_models: 1
-  use_amp: true
+  use_amp: false
 
-  optim: adam
+  optim: adamw
   optim_conf:
-      lr: 0.0005
+      lr: 0.0001
       weight_decay: 0.000001
-  scheduler: warmuplr
+  scheduler: steplr
   scheduler_conf:
-      warmup_steps: 5000
-
+      step_size: 1000
+      gamma: 0.9

@@ -14,8 +14,8 @@ class MTModel(AbsESPnetModel):
     ):
         super().__init__()
         self.model = Text2Text(
-            ckpt_config,
-            ckpt_path,
+            mt_train_config=ckpt_config,
+            mt_model_file=ckpt_path,
             device="cuda" if torch.cuda.is_available() else "cpu",
             **kwargs,
         ).mt_model

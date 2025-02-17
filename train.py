@@ -93,16 +93,8 @@ if __name__ == '__main__':
     # Step 3. Train the model
     # convert omegaconf to namespace
     config = Namespace(**OmegaConf.to_container(config))
-    if args.train_u2t:
-        config.train['token_type'] = "bpe"
-        config.train['bpemodel'] = config.train_dataset["tgt_bpe_path"]
-        config.train['token_list'] = config.train_dataset["tgt_token_list_path"]
-        config.train['src_token_type'] = "bpe"
-        config.train['src_bpemodel'] = config.train_dataset["src_bpe_path"]
-        config.train['src_token_list'] = config.train_dataset["src_token_list_path"]
-    else:
-        config.train['token_list'] = ["<unk>", "<s>", "</s>", "<pad>"]
-        config.train['token_type'] = "char"
+    config.train['token_list'] = ["<unk>", "<s>", "</s>", "<pad>"]
+    config.train['token_type'] = "char"
     config.train['drop_last_iter'] = True
     config.train['shuffle_within_batch'] = False
 

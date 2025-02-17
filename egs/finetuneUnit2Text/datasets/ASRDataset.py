@@ -25,21 +25,20 @@ class ASRDataset(torch.utils.data.Dataset):
         self.split = split
 
         # For ASR we use the following two datasets:
+        with open(unit_path, "r") as f:
+            self.units_data = {}
+            for row in f.readlines():
+                key, units = row.split(maxsplit=1)
+                self.units_data[key] = units.strip()
+
+        keys = set(self.units_data.keys())
         self.audio_data = datasets.load_dataset(
             "espnet/DSUChallenge2024"
-        )[split].remove_columns(["audio"])
-        self.keys = self.audio_data["id"]
+        )[split].remove_columns(["audio"]).filter(
+            lambda example: example["id"] in keys,
+            num_proc=num_proc,
+        )
 
-        with open(unit_path, "r") as f:
-            lines = f.readlines()
-
-        self.units_data = {
-            l.split(maxsplit=1)[0]: l.split(maxsplit=1)[1].strip()
-            for l in lines
-        }
-        # intersection
-        self.keys = list(set(self.keys) & set(self.units_data.keys()))
-        
         self.tokenizers = {
             "src": build_tokenizer(
                 token_type="bpe",
@@ -58,13 +57,13 @@ class ASRDataset(torch.utils.data.Dataset):
         self.tokenizers["tgt"]._build_sentence_piece_processor()
 
     def __len__(self):
-        return len(self.keys)
+        return len(self.audio_data)
 
     # @functools.lru_cache(maxsize=32, typed=False)
     def __getitem__(self, idx):
-        key = self.keys[idx]
         audio = self.audio_data[idx]
-        units = self.units_data[key]
+        units = self.units_data[audio["id"]]
+
         unit_text = "".join([x[0] for x in groupby(units)])
         unit_str = self.tokenizers["src"].text2tokens(unit_text)
         unit_bpe = self.converters["src"].tokens2ids(unit_str)

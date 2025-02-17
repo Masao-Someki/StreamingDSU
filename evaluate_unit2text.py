@@ -68,7 +68,7 @@ if __name__ == '__main__':
         ctc_weight=0.0,
         lm_weight=0.0,
         device=device
-    )
+    ).eval()
 
     tokenizer = dataset.tokenizers["src"]
     converter = dataset.converters["src"]
@@ -90,6 +90,7 @@ if __name__ == '__main__':
     gts = []
     hyps = []
     ids = []
+
     for data in tqdm(dataset):
         units = data["units"]
         results = mt_model(units)

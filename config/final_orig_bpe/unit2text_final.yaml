@@ -24,10 +24,9 @@ model:
   _target_: egs.finetuneUnit2Text.MTModel
   ckpt_config: ondevice_demo/baseline/exp/wavlm_baseline/config.yaml
   ckpt_path: ondevice_demo/baseline/exp/wavlm_baseline/valid.acc.ave_10best.pth
-  ctc_weight: 0.3
 
 # ESPnetEZ related
-task: asr
+task: mt
 
 # ESPnet related
 train:
@@ -39,7 +38,7 @@ train:
   accum_grad: 1
   grad_clip: 1.0
   max_epoch: 10
-  patience: 1
+  patience: 3
   init: 
   best_model_criterion:
   -   - valid

@@ -64,7 +64,7 @@ if __name__ == '__main__':
     # Step 1. Setup dataset
     if args.train_u2t:
         data_info = {
-            "speech": lambda x: x["units"],
+            "src_text": lambda x: x["units"],
             "text": lambda x: x["text"],
         }
     else:
@@ -91,13 +91,6 @@ if __name__ == '__main__':
         return model
 
     # Step 3. Train the model
-    # convert omegaconf to namespace
-    config = Namespace(**OmegaConf.to_container(config))
-    config.train['token_list'] = ["<unk>", "<s>", "</s>", "<pad>"]
-    config.train['token_type'] = "char"
-    config.train['drop_last_iter'] = True
-    config.train['shuffle_within_batch'] = False
-
     config_name = os.path.basename(args.train_config).split(".")[0]
     current_date = datetime.now().strftime("%Y%m%d_%H%M%S")
     if args.train_u2t:
@@ -105,8 +98,20 @@ if __name__ == '__main__':
     else:
         expdir = f"exp/{config_name}/{current_date}"
 
-    default_config = ez.get_ez_task(config.task).get_default_config()
-    default_config.update(config.train)
+    # convert omegaconf to namespace
+    config = Namespace(**OmegaConf.to_container(config))
+    if args.train_u2t:
+        default_config = OmegaConf.to_container(OmegaConf.load(config.model["ckpt_config"]))
+        default_config.update(config.train)
+
+    else:
+        config.train['token_list'] = ["<unk>", "<s>", "</s>", "<pad>"]
+        config.train['token_type'] = "char"
+        config.train['drop_last_iter'] = True
+        config.train['shuffle_within_batch'] = False
+
+        default_config = ez.get_ez_task(config.task).get_default_config()
+        default_config.update(config.train)
 
     trainer = ez.Trainer(
         task=config.task,

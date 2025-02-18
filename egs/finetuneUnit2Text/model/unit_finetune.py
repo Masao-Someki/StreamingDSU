@@ -21,13 +21,12 @@ class MTModel(AbsESPnetModel):
         ).mt_model
         self.model.train()
 
-
     def forward(
         self,
-        speech: torch.Tensor,
-        speech_lengths: torch.Tensor,
         text: torch.Tensor,
         text_lengths: torch.Tensor,
+        src_text: torch.Tensor,
+        src_text_lengths: torch.Tensor,
         **kwargs,
     ):
         """
@@ -35,29 +34,27 @@ class MTModel(AbsESPnetModel):
         text: (B, T_u)
         """
         loss, stats, weight = self.model(
-            src_text=speech, src_text_lengths=speech_lengths,
             text=text, text_lengths=text_lengths,
+            src_text=src_text, src_text_lengths=src_text_lengths,
         )
 
         return loss, stats, weight
 
     def collect_feats(
         self,
-        speech: torch.Tensor,
-        speech_lengths: torch.Tensor,
         text: torch.Tensor,
         text_lengths: torch.Tensor,
+        src_text: torch.Tensor,
+        src_text_lengths: torch.Tensor,
         **kwargs,
     ):
-        return {"feats": speech, "feats_lengths": speech_lengths}
+        return {"feats": src_text, "feats_lengths": src_text_lengths}
 
-    # def state_dict(self, *args, **kwargs):
-    #     return {
-    #         "model": self.model.state_dict(),
-    #     }
-    
-    # def load_state_dict(self, state_dict):
-    #     self.model.load_state_dict(state_dict["model"])
+    def state_dict(self, *args, **kwargs):
+        return self.model.state_dict()
+
+    def load_state_dict(self, state_dict):
+        self.model.load_state_dict(state_dict)
 
     # def inference(
     #     self,

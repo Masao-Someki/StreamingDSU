@@ -9,8 +9,8 @@ if __name__ == "__main__":
     model = AutoModel.from_pretrained("microsoft/wavlm-large").to(device)
 
     for layer in range(25):
-        # 30s input
-        x = torch.ones(()).new_empty((1, 80 + 320 * 1500, ), dtype=next(model.parameters()).dtype, device=device)
+        full_window = 3000  # 30s input
+        x = torch.ones(()).new_empty((1, 80 + 320 * full_window, ), dtype=next(model.parameters()).dtype, device=device)
         pipeline = CalFlopsPipline(model=model, include_backPropagation=False, compute_bp_factor=2.0)
 
         pipeline.start_flops_calculate(ignore_list=[])
@@ -22,13 +22,13 @@ if __name__ == "__main__":
         )
         pipeline.end_flops_calculate()
 
-        for window in (1500, 1, 2, 3, 5, 9, 17, 33, 65, 129, ):
-            print(total_flops - attn_flops + attn_flops / 1500 * window, end="\t")
+        for window in (full_window, 1, 2, 3, 5, 9, 17, 33, 65, 129, ):
+            print(total_flops - attn_flops + attn_flops / full_window * window, end="\t")
 
         if (24 - layer) == 21:
             print("\nFull past:", end="\t")
             for window in (1, 2, 3, 5, 9, 17, 33, 65, 129, ):
-                diag = attn_flops / 1500 * window
+                diag = attn_flops / full_window * window
                 lower_tri = (attn_flops - diag) / 2
                 print(total_flops - attn_flops + diag + lower_tri, end="\t")
 

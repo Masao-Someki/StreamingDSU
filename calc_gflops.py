@@ -25,6 +25,13 @@ if __name__ == "__main__":
         for window in (1500, 1, 2, 3, 5, 9, 17, 33, 65, 129, ):
             print(total_flops - attn_flops + attn_flops / 1500 * window, end="\t")
 
+        if (24 - layer) == 21:
+            print("\nFull past:", end="\t")
+            for window in (1, 2, 3, 5, 9, 17, 33, 65, 129, ):
+                diag = attn_flops / 1500 * window
+                lower_tri = (attn_flops - diag) / 2
+                print(total_flops - attn_flops + diag + lower_tri, end="\t")
+
         if len(model.encoder.layers):
             del model.encoder.layers[-1]
         print()

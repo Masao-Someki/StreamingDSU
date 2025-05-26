@@ -1,5 +1,6 @@
-# StreamingDSU
-Course project for on-device project
+# On-device Streaming Discrete Speech Units
+- Accepted to Interspeech 2025
+- Additional results (Baseline, SSL Frozen, SSL FT in Figure 4) can be found here: https://github.com/juice500ml/espnet/tree/dsu_baseline/egs2/interspeech2024_dsu_challenge
 
 ## Installation (conda)
 ```sh

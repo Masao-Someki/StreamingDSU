@@ -125,9 +125,9 @@ bash submit_everything.sh
 If you use this repository, please cite our Interspeech 2025 paper.
 
 ```
-@inproceedings{your-interspeech2025-paper,
+@inproceedings{choi25_interspeech,
   title={On-device Streaming Discrete Speech Units},
-  author={...},
+  author={Kwanghee Choi and Masao Someki and Emma Strubell and Shinji Watanabe},
   booktitle={Interspeech},
   year={2025}
 }
